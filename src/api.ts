@@ -18,8 +18,13 @@ export interface Day extends Hour {
   lo: number;
 }
 
+export interface HourSlot extends Hour {
+  time: string;   // "2026-10-25T19:00" (New York time)
+}
+
 export interface MirrorData {
   now: { date: string; weekday: string; minutes: number };
+  photos?: string[];
   isWorkday: boolean;
   schedule: {
     alarm: string;
@@ -35,6 +40,9 @@ export interface MirrorData {
     now: { temp: number; kind: Kind; label: string };
     driveIn: Hour | null;
     driveHome: Hour | null;
+    today?: { sunrise: string | null; sunset: string | null; uv: number | null };
+    tomorrow?: { date: string; driveIn: Hour | null; driveHome: Hour | null };
+    hourly?: HourSlot[];
     days: Day[];
     fetchedAt: string;
   };

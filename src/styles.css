@@ -401,3 +401,95 @@ body,
 .setup code {
   color: var(--accent);
 }
+
+/* ---------- weekend / off-hours ---------- */
+.hourly {
+  display: flex;
+  flex-direction: column;
+  gap: 1vmin;
+  margin-top: 2vmin;
+}
+.hourly-grid {
+  display: grid;
+  gap: 0.7vmin;
+}
+.hour {
+  background: var(--card);
+  border-radius: 1.4vmin;
+  padding: 1.1vmin 0.4vmin;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5vmin;
+  font-size: 1.7vmin;
+}
+.hour-label {
+  color: var(--muted);
+  font-size: 1.5vmin;
+}
+.hour-temp {
+  font-size: 1.9vmin;
+  font-weight: 600;
+}
+.hour-rain {
+  font-size: 1.4vmin;
+}
+
+.photo {
+  flex: 1 1 24vmin;
+  min-height: 12vmin;
+  max-height: 30vmin;
+  border-radius: 2.2vmin;
+  overflow: hidden;
+  background: var(--card);
+}
+.photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  animation: photo-in 1.2s ease;
+}
+@keyframes photo-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.photo-empty {
+  border: 1px dashed #4a3a6b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8vmin;
+  font-size: 1.7vmin;
+  text-align: center;
+  padding: 2vmin;
+}
+.photo-empty-title {
+  font-size: 2.3vmin;
+  font-weight: 500;
+}
+
+.tomorrow {
+  background: #2a1d45;
+  gap: 1vmin;
+}
+.tomorrow-label {
+  color: #c9b3f7;
+}
+.tomorrow-title {
+  font-size: 3.6vmin;
+  font-weight: 600;
+}
+
+.countdown {
+  gap: 0.3vmin;
+}
+.countdown-title {
+  font-size: 2.8vmin;
+  font-weight: 600;
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchMirror, loadDeviceKey, medsAction, type MirrorData } from "./api";
+import { fetchMirror, loadDeviceKey, medsAction, type HourSlot, type MirrorData } from "./api";
 import { fmt12, nyNow, prettyDate, timeOfIso, toMin, type NyNow } from "./time";
 import { BellIcon, CarIcon, CheckIcon, WeatherIcon } from "./icons";
 
@@ -9,6 +9,61 @@ const MORNING_END = 5 * 60 + 30;     // 5:30 AM
 const NIGHT_START = 21 * 60;         // 9:00 PM → black screen
 const NIGHT_END = 4 * 60;            // until 4:00 AM
 const DAILY_RELOAD = 3 * 60 + 55;    // reload at 3:55 AM to pick up new deploys
+const PREVIEW_FROM = 16 * 60;        // from 4 PM, show "Tomorrow" before a workday
+const PHOTO_SECONDS = 30;
+const HOURLY_COUNT = 10;
+const PAYDAY_ANCHOR = "2026-10-30";  // every other Friday from here
+
+// ------------------------------------------------------------
+// Small helpers
+// ------------------------------------------------------------
+function dayIndex(date: string) {
+  return new Date(`${date}T12:00:00Z`).getUTCDay(); // 0 = Sun
+}
+
+function weekdayLong(date: string) {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+}
+
+function daysBetween(from: string, to: string) {
+  const a = from.split("-").map(Number);
+  const b = to.split("-").map(Number);
+  return Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86400000);
+}
+
+function addDays(date: string, n: number) {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+function nextPayday(today: string) {
+  const since = daysBetween(PAYDAY_ANCHOR, today);
+  const daysUntil = since < 0 ? -since : (14 - (since % 14)) % 14;
+  const date = addDays(today, daysUntil);
+  const label =
+    daysUntil === 0
+      ? "Today"
+      : daysUntil === 1
+        ? "Tomorrow"
+        : daysUntil <= 6
+          ? weekdayLong(date)
+          : prettyDate(date);
+  const sub = daysUntil === 0 ? "It's payday" : `in ${daysUntil} days`;
+  return { label, sub };
+}
+
+function hourLabel(time: string) {
+  const h = Number(time.slice(11, 13));
+  return `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "a" : "p"}`;
+}
+
+function uvLabel(uv: number) {
+  if (uv < 3) return "Low";
+  if (uv < 6) return "Moderate";
+  if (uv < 8) return "High";
+  if (uv < 11) return "Very high";
+  return "Extreme";
+}
 
 // ------------------------------------------------------------
 // Hooks
@@ -78,6 +133,10 @@ export default function App() {
 
   const morning = now.isWeekday && now.minutes >= MORNING_START && now.minutes <= MORNING_END;
 
+  const tomorrow = data?.weather?.tomorrow;
+  const tomorrowIsWorkday = tomorrow ? [1, 2, 3, 4, 5].includes(dayIndex(tomorrow.date)) : false;
+  const showPreview = !morning && now.minutes >= PREVIEW_FROM && tomorrowIsWorkday;
+
   async function act(action: "took" | "undo" | "refilled") {
     if (!key || !data || busy) return;
     setBusy(true);
@@ -108,21 +167,17 @@ export default function App() {
             <span className="clock-time">{now.clock}</span>
             <span className="clock-ampm">{now.ampm}</span>
           </div>
-          {morning && data ? (
-            <Countdown now={now} data={data} />
-          ) : (
-            data?.weather && (
-              <div className="hero-sub">
-                {data.weather.now.temp}° · {data.weather.now.label}
-              </div>
-            )
-          )}
+          {morning && data && <Countdown now={now} data={data} />}
+          {!morning && data?.weather?.hourly && <HourlyStrip now={now} hours={data.weather.hourly} />}
         </section>
 
         <section className="side">
           {data && <MedsCard data={data} now={now} morning={morning} busy={busy} onAction={act} />}
           {morning && data && <CommuteCard data={data} />}
-          {data?.weather && <WeatherCard data={data} />}
+          {!morning && data && showPreview && <TomorrowCard data={data} />}
+          {!morning && data && !showPreview && <PhotoCard photos={data.photos ?? []} />}
+          {data?.weather && <WeatherCard data={data} morning={morning} />}
+          {!morning && data && <PaydayCard today={now.date} />}
           {!data && <div className="card muted">{offline ? "Can't reach the server yet…" : "Loading…"}</div>}
         </section>
       </main>
@@ -137,7 +192,7 @@ export default function App() {
 }
 
 // ------------------------------------------------------------
-// Pieces
+// Weekday morning pieces
 // ------------------------------------------------------------
 function ProgressBar({ now, data }: { now: NyNow; data: MirrorData }) {
   const start = toMin(data.schedule.alarm);
@@ -198,6 +253,145 @@ function Countdown({ now, data }: { now: NyNow; data: MirrorData }) {
   );
 }
 
+function CommuteCard({ data }: { data: MirrorData }) {
+  const c = data.commute;
+  const statusText = c
+    ? c.status === "normal"
+      ? "Normal"
+      : c.status === "slower"
+        ? `+${c.delayMinutes} min`
+        : `Heavy · +${c.delayMinutes} min`
+    : "";
+
+  return (
+    <div className="card">
+      <div className="card-label">
+        <CarIcon size="1.1em" />
+        <span>Commute to work</span>
+      </div>
+      {c ? (
+        <>
+          <div className="commute-row">
+            <span className="big">{c.minutes} min</span>
+            <span className={`status status-${c.status}`}>{statusText}</span>
+          </div>
+          <span className="card-sub muted-text">
+            {c.status === "normal"
+              ? "Traffic looks normal on your route"
+              : `Usually ${c.normalMinutes} min · ${c.miles} mi`}
+          </span>
+        </>
+      ) : (
+        <span className="card-sub muted-text">Traffic unavailable right now</span>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Weekend / off-hours pieces
+// ------------------------------------------------------------
+function HourlyStrip({ now, hours }: { now: NyNow; hours: HourSlot[] }) {
+  const hh = String(Math.floor(now.minutes / 60)).padStart(2, "0");
+  const currentKey = `${now.date}T${hh}:00`;
+  const next = hours.filter((h) => h.time > currentKey).slice(0, HOURLY_COUNT);
+  if (!next.length) return null;
+
+  return (
+    <div className="hourly">
+      <span className="card-label">Next {next.length} hours</span>
+      <div className="hourly-grid" style={{ gridTemplateColumns: `repeat(${next.length}, minmax(0, 1fr))` }}>
+        {next.map((h) => (
+          <div className="hour" key={h.time}>
+            <span className="hour-label">{hourLabel(h.time)}</span>
+            <WeatherIcon kind={h.kind} size="1.3em" />
+            <span className="hour-temp">{h.temp}°</span>
+            <span className={`hour-rain ${h.rain >= 40 ? "rain-text" : "muted-text"}`}>{h.rain}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PhotoCard({ photos }: { photos: string[] }) {
+  const [i, setI] = useState(0);
+
+  useEffect(() => {
+    if (photos.length < 2) return;
+    const t = setInterval(() => setI((n) => (n + 1) % photos.length), PHOTO_SECONDS * 1000);
+    return () => clearInterval(t);
+  }, [photos.length]);
+
+  // Preload the next photo so the swap is instant.
+  useEffect(() => {
+    if (photos.length < 2) return;
+    const img = new Image();
+    img.src = photos[(i + 1) % photos.length];
+  }, [i, photos]);
+
+  if (!photos.length) {
+    return (
+      <div className="photo photo-empty">
+        <span className="photo-empty-title">Your photos go here</span>
+        <span className="muted-text">Supabase → Storage → mirror-photos → Upload</span>
+      </div>
+    );
+  }
+
+  const src = photos[i % photos.length];
+  return (
+    <div className="photo">
+      <img key={src} src={src} alt="" className="photo-img" />
+    </div>
+  );
+}
+
+function TomorrowCard({ data }: { data: MirrorData }) {
+  const t = data.weather!.tomorrow!;
+  const drive = (h: typeof t.driveIn) =>
+    h ? `${h.temp}° · ${h.rain >= 30 ? `Rain ${h.rain}%` : "Dry"}` : "—";
+
+  return (
+    <div className="card tomorrow">
+      <span className="card-label tomorrow-label">Tomorrow · {weekdayLong(t.date)}</span>
+      <span className="tomorrow-title">Leave by {fmt12(data.schedule.leaveIdeal)}</span>
+      <div className="weather-drives">
+        <div className="drive-row">
+          <span className="drive-label">Alarm</span>
+          <span>{fmt12(data.schedule.alarm, true)}</span>
+        </div>
+        <div className="drive-row">
+          <span className="drive-label">Drive in</span>
+          <span>{drive(t.driveIn)}</span>
+        </div>
+        <div className="drive-row">
+          <span className="drive-label">Drive home</span>
+          {t.driveHome && t.driveHome.rain >= 40 ? (
+            <span className="rain-text">Rain {t.driveHome.rain}% · bring umbrella</span>
+          ) : (
+            <span>{drive(t.driveHome)}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaydayCard({ today }: { today: string }) {
+  const p = nextPayday(today);
+  return (
+    <div className="card card-green countdown">
+      <span className="card-label green-sub">Payday</span>
+      <span className="countdown-title green">{p.label}</span>
+      <span className="card-sub green-sub">{p.sub}</span>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Shared pieces
+// ------------------------------------------------------------
 function MedsCard({
   data,
   now,
@@ -276,44 +470,11 @@ function MedsCard({
   );
 }
 
-function CommuteCard({ data }: { data: MirrorData }) {
-  const c = data.commute;
-  const statusText = c
-    ? c.status === "normal"
-      ? "Normal"
-      : c.status === "slower"
-        ? `+${c.delayMinutes} min`
-        : `Heavy · +${c.delayMinutes} min`
-    : "";
-
-  return (
-    <div className="card">
-      <div className="card-label">
-        <CarIcon size="1.1em" />
-        <span>Commute to work</span>
-      </div>
-      {c ? (
-        <>
-          <div className="commute-row">
-            <span className="big">{c.minutes} min</span>
-            <span className={`status status-${c.status}`}>{statusText}</span>
-          </div>
-          <span className="card-sub muted-text">
-            {c.status === "normal"
-              ? "Traffic looks normal on your route"
-              : `Usually ${c.normalMinutes} min · ${c.miles} mi`}
-          </span>
-        </>
-      ) : (
-        <span className="card-sub muted-text">Traffic unavailable right now</span>
-      )}
-    </div>
-  );
-}
-
-function WeatherCard({ data }: { data: MirrorData }) {
+function WeatherCard({ data, morning }: { data: MirrorData; morning: boolean }) {
   const w = data.weather!;
   const home = w.driveHome;
+  const t = w.today;
+
   return (
     <div className="card weather">
       <div className="weather-now">
@@ -324,7 +485,8 @@ function WeatherCard({ data }: { data: MirrorData }) {
         </div>
         <span className="card-sub muted-text">{w.now.label}</span>
       </div>
-      {data.isWorkday && (
+
+      {morning ? (
         <>
           <div className="divider" />
           <div className="weather-drives">
@@ -350,6 +512,34 @@ function WeatherCard({ data }: { data: MirrorData }) {
             </div>
           </div>
         </>
+      ) : (
+        t && (
+          <>
+            <div className="divider" />
+            <div className="weather-drives">
+              {t.sunrise && (
+                <div className="drive-row">
+                  <span className="drive-label">Sunrise</span>
+                  <span>{fmt12(t.sunrise, true)}</span>
+                </div>
+              )}
+              {t.sunset && (
+                <div className="drive-row">
+                  <span className="drive-label">Sunset</span>
+                  <span>{fmt12(t.sunset, true)}</span>
+                </div>
+              )}
+              {t.uv != null && (
+                <div className="drive-row">
+                  <span className="drive-label">UV</span>
+                  <span className={t.uv >= 3 ? "warn-text" : ""}>
+                    {t.uv} · {uvLabel(t.uv)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </>
+        )
       )}
     </div>
   );

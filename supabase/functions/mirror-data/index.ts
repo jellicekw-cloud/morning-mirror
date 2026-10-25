@@ -13,6 +13,9 @@ const WEATHER_TTL_MIN = 15;
 const COMMUTE_TTL_MIN = 4;
 const COMMUTE_WINDOW_START = 4 * 60;        // 4:00 AM
 const COMMUTE_WINDOW_END = 5 * 60 + 30;     // 5:30 AM
+const PHOTO_BUCKET = "mirror-photos";
+const PHOTOS_TTL_MIN = 30;                  // new uploads show up within 30 min
+const PHOTO_LINK_HOURS = 2;                 // private links stay valid 2 hours
 
 const DEVICE_KEY = Deno.env.get("MIRROR_DEVICE_KEY") ?? "";
 const GOOGLE_KEY = Deno.env.get("GOOGLE_MAPS_KEY") ?? "";
@@ -143,7 +146,7 @@ async function getWeather(today: string, tz: string, workEnd: string) {
     longitude: String(LNG),
     current: "temperature_2m,weather_code",
     hourly: "temperature_2m,precipitation_probability,weather_code",
-    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max",
     temperature_unit: "fahrenheit",
     timezone: tz,
     forecast_days: "7",
@@ -156,25 +159,38 @@ async function getWeather(today: string, tz: string, workEnd: string) {
   }
   const w = await r.json();
 
-  const hourAt = (hh: number) => {
-    const i = w.hourly.time.indexOf(`${today}T${String(hh).padStart(2, "0")}:00`);
-    if (i < 0) return null;
-    return {
-      temp: Math.round(w.hourly.temperature_2m[i]),
-      rain: w.hourly.precipitation_probability[i] ?? 0,
-      ...describe(w.hourly.weather_code[i]),
-    };
+  const hourOf = (i: number) => ({
+    temp: Math.round(w.hourly.temperature_2m[i]),
+    rain: w.hourly.precipitation_probability[i] ?? 0,
+    ...describe(w.hourly.weather_code[i]),
+  });
+
+  const hourAt = (date: string, hh: number) => {
+    const i = w.hourly.time.indexOf(`${date}T${String(hh).padStart(2, "0")}:00`);
+    return i < 0 ? null : hourOf(i);
   };
 
-  const driveIn = hourAt(5);
   const endHour = Math.floor(toMin(workEnd) / 60);   // 14 for 2:30 PM
-  const homeA = hourAt(endHour);
-  const homeB = hourAt(endHour + 1);
-  let driveHome = null;
-  if (homeA && homeB) {
-    const wetter = homeA.rain >= homeB.rain ? homeA : homeB;
-    driveHome = { temp: homeB.temp, rain: wetter.rain, kind: wetter.kind, label: wetter.label };
-  }
+  const drivesFor = (date: string) => {
+    const driveIn = hourAt(date, 5);
+    const homeA = hourAt(date, endHour);
+    const homeB = hourAt(date, endHour + 1);
+    let driveHome = null;
+    if (homeA && homeB) {
+      const wetter = homeA.rain >= homeB.rain ? homeA : homeB;
+      driveHome = { temp: homeB.temp, rain: wetter.rain, kind: wetter.kind, label: wetter.label };
+    }
+    return { driveIn, driveHome };
+  };
+
+  const todayDrives = drivesFor(today);
+  const tomorrowDate = addDays(today, 1);
+
+  // Next 48 hours from midnight today; the screen picks the next 10 from "now".
+  const hourly = w.hourly.time.slice(0, 48).map((time: string, i: number) => ({
+    time,
+    ...hourOf(i),
+  }));
 
   const days = w.daily.time.map((date: string, i: number) => ({
     date,
@@ -185,10 +201,19 @@ async function getWeather(today: string, tz: string, workEnd: string) {
     ...describe(w.daily.weather_code[i]),
   }));
 
+  const timeOnly = (s: string | undefined) => (s ? s.slice(11, 16) : null);
+
   return {
     now: { temp: Math.round(w.current.temperature_2m), ...describe(w.current.weather_code) },
-    driveIn,
-    driveHome,
+    driveIn: todayDrives.driveIn,
+    driveHome: todayDrives.driveHome,
+    today: {
+      sunrise: timeOnly(w.daily.sunrise?.[0]),
+      sunset: timeOnly(w.daily.sunset?.[0]),
+      uv: w.daily.uv_index_max?.[0] != null ? Math.round(w.daily.uv_index_max[0]) : null,
+    },
+    tomorrow: { date: tomorrowDate, ...drivesFor(tomorrowDate) },
+    hourly,
     days,
     fetchedAt: new Date().toISOString(),
   };
@@ -247,6 +272,37 @@ async function getCommute(today: string) {
   };
 }
 
+// ---------- photos (private Supabase Storage bucket) ----------
+async function getPhotos(): Promise<string[] | null> {
+  const bucket = db.storage.from(PHOTO_BUCKET);
+  const { data, error } = await bucket.list("", {
+    limit: 200,
+    sortBy: { column: "name", order: "asc" },
+  });
+
+  if (error) {
+    // First run: the bucket doesn't exist yet, so create it (private).
+    const created = await db.storage.createBucket(PHOTO_BUCKET, { public: false });
+    if (created.error && !/exist/i.test(created.error.message)) {
+      console.error("photos: create bucket", created.error);
+      return null;
+    }
+    return [];
+  }
+
+  const names = (data ?? [])
+    .filter((f) => f.id && /\.(jpe?g|png|webp|gif)$/i.test(f.name))
+    .map((f) => f.name);
+  if (!names.length) return [];
+
+  const { data: signed, error: signErr } = await bucket.createSignedUrls(names, PHOTO_LINK_HOURS * 3600);
+  if (signErr) {
+    console.error("photos: sign", signErr);
+    return null;
+  }
+  return (signed ?? []).filter((s) => s.signedUrl).map((s) => s.signedUrl as string);
+}
+
 type Commute = NonNullable<Awaited<ReturnType<typeof getCommute>>>;
 type Weather = NonNullable<Awaited<ReturnType<typeof getWeather>>>;
 
@@ -291,7 +347,7 @@ Deno.serve(async (req) => {
 
     // Weather
     const weather = await cached<Weather>(
-      `weather:${now.date}`,
+      `weather2:${now.date}`,
       WEATHER_TTL_MIN,
       () => getWeather(now.date, s.timezone, s.work_end_time),
     );
@@ -322,8 +378,12 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Photos (slideshow on the weekend / off-hours view)
+    const photos = (await cached<string[]>("photos", PHOTOS_TTL_MIN, getPhotos)) ?? [];
+
     return json({
       now: { date: now.date, weekday: now.weekday, minutes: now.minutes },
+      photos,
       isWorkday,
       schedule: {
         alarm: "04:15",
