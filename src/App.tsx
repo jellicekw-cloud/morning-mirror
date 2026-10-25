@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchMirror, KeyRejectedError, loadDeviceKey, medsAction, type HourSlot, type MirrorData } from "./api";
+import {
+  fetchMirror,
+  KeyRejectedError,
+  loadDeviceKey,
+  medsAction,
+  type HourSlot,
+  type Kind,
+  type MirrorData,
+} from "./api";
 import { fmt12, nyNow, prettyDate, timeOfIso, toMin, type NyNow } from "./time";
 import { BellIcon, CarIcon, CheckIcon, WeatherIcon } from "./icons";
 
@@ -55,6 +63,14 @@ function nextPayday(today: string) {
 function hourLabel(time: string) {
   const h = Number(time.slice(11, 13));
   return `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "a" : "p"}`;
+}
+
+/** Clear-sky "sun" becomes a moon between sunset and sunrise. */
+function dayOrNight(kind: Kind, minutes: number, sunrise?: string | null, sunset?: string | null): Kind {
+  if (kind !== "sun") return kind;
+  const rise = sunrise ? toMin(sunrise) : 7 * 60;
+  const set = sunset ? toMin(sunset) : 19 * 60;
+  return minutes < rise || minutes >= set ? "moon" : "sun";
 }
 
 function uvLabel(uv: number) {
@@ -172,7 +188,14 @@ export default function App() {
             <span className="clock-ampm">{now.ampm}</span>
           </div>
           {morning && data && <Countdown now={now} data={data} />}
-          {!morning && data?.weather?.hourly && <HourlyStrip now={now} hours={data.weather.hourly} />}
+          {!morning && data?.weather?.hourly && (
+            <HourlyStrip
+              now={now}
+              hours={data.weather.hourly}
+              sunrise={data.weather.today?.sunrise}
+              sunset={data.weather.today?.sunset}
+            />
+          )}
         </section>
 
         <section className="side">
@@ -180,7 +203,7 @@ export default function App() {
           {morning && data && <CommuteCard data={data} />}
           {!morning && data && showPreview && <TomorrowCard data={data} />}
           {!morning && data && !showPreview && <PhotoCard photos={data.photos ?? []} />}
-          {data?.weather && <WeatherCard data={data} morning={morning} />}
+          {data?.weather && <WeatherCard data={data} morning={morning} nowMin={now.minutes} />}
           {!morning && data && <PaydayCard today={now.date} />}
           {!data && <div className="card muted">{offline ? "Can't reach the server yet…" : "Loading…"}</div>}
         </section>
@@ -295,7 +318,17 @@ function CommuteCard({ data }: { data: MirrorData }) {
 // ------------------------------------------------------------
 // Weekend / off-hours pieces
 // ------------------------------------------------------------
-function HourlyStrip({ now, hours }: { now: NyNow; hours: HourSlot[] }) {
+function HourlyStrip({
+  now,
+  hours,
+  sunrise,
+  sunset,
+}: {
+  now: NyNow;
+  hours: HourSlot[];
+  sunrise?: string | null;
+  sunset?: string | null;
+}) {
   const hh = String(Math.floor(now.minutes / 60)).padStart(2, "0");
   const currentKey = `${now.date}T${hh}:00`;
   const next = hours.filter((h) => h.time > currentKey).slice(0, HOURLY_COUNT);
@@ -308,7 +341,7 @@ function HourlyStrip({ now, hours }: { now: NyNow; hours: HourSlot[] }) {
         {next.map((h) => (
           <div className="hour" key={h.time}>
             <span className="hour-label">{hourLabel(h.time)}</span>
-            <WeatherIcon kind={h.kind} size="1.3em" />
+            <WeatherIcon kind={dayOrNight(h.kind, toMin(h.time.slice(11, 16)), sunrise, sunset)} size="1.3em" />
             <span className="hour-temp">{h.temp}°</span>
             <span className={`hour-rain ${h.rain >= 40 ? "rain-text" : "muted-text"}`}>{h.rain}%</span>
           </div>
@@ -455,7 +488,9 @@ function MedsCard({
       ? `In ${minsUntil} min${morning ? ", before you head out" : ""}`
       : minsUntil === 0
         ? "Now"
-        : `${-minsUntil} min ago`;
+        : minsUntil >= -60
+          ? `${-minsUntil} min ago`
+          : `Not logged yet today (due ${fmt12(meds.time, true)})`;
 
   return (
     <div className={`card card-amber ${minsUntil <= 0 ? "is-due" : ""}`}>
@@ -474,17 +509,18 @@ function MedsCard({
   );
 }
 
-function WeatherCard({ data, morning }: { data: MirrorData; morning: boolean }) {
+function WeatherCard({ data, morning, nowMin }: { data: MirrorData; morning: boolean; nowMin: number }) {
   const w = data.weather!;
   const home = w.driveHome;
   const t = w.today;
+  const nowKind = dayOrNight(w.now.kind, nowMin, t?.sunrise, t?.sunset);
 
   return (
     <div className="card weather">
       <div className="weather-now">
         <span className="card-label">Outside now</span>
         <div className="weather-temp">
-          <WeatherIcon kind={w.now.kind} size="0.8em" />
+          <WeatherIcon kind={nowKind} size="0.8em" />
           <span>{w.now.temp}°</span>
         </div>
         <span className="card-sub muted-text">{w.now.label}</span>

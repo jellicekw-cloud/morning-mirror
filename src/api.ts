@@ -2,7 +2,7 @@
 // The device key is never in the code: the tablet opens the page once with
 // ?key=YOUR_DEVICE_KEY, it's saved on that device, and removed from the address bar.
 
-export type Kind = "sun" | "cloud" | "rain" | "snow" | "storm" | "fog";
+export type Kind = "sun" | "moon" | "cloud" | "rain" | "snow" | "storm" | "fog";
 
 export interface Hour {
   temp: number;
