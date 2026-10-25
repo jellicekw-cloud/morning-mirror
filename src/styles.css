@@ -1,0 +1,403 @@
+/* Sized in vmin so the same layout fits the tablet now and the monitor later. */
+:root {
+  --bg: #120d1c;
+  --card: #1d1530;
+  --track: #2a2140;
+  --line: #2f2547;
+  --text: #f3eefb;
+  --muted: #a99bc0;
+  --accent: #b794f6;
+  --amber: #f5b041;
+  --amber-bg: #3a2a10;
+  --amber-title: #fbd38d;
+  --amber-sub: #e8c992;
+  --green: #7ee2b0;
+  --green-bg: #12301f;
+  --green-title: #a7f0c9;
+  --green-sub: #8fd4b0;
+  --red: #ff8a8a;
+  --rain: #8fc5ff;
+  --sun: #f5b041;
+  --cloud: #c9bfdc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Outfit", system-ui, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+.mirror {
+  height: 100vh;
+  padding: 3.4vmin 4.4vmin 3.6vmin;
+  display: flex;
+  flex-direction: column;
+  gap: 2.8vmin;
+}
+
+/* ---------- progress bar ---------- */
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 1vmin;
+}
+.progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.6vmin;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.progress-mid {
+  color: var(--text);
+  font-weight: 500;
+}
+.progress-track {
+  height: 1vmin;
+  border-radius: 999px;
+  background: var(--track);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 1s linear;
+}
+.progress-fill.is-over {
+  background: var(--amber);
+}
+
+/* ---------- main layout ---------- */
+.main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 4vmin;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.8vmin;
+  min-width: 0;
+}
+.date {
+  font-size: 2.8vmin;
+  color: var(--muted);
+}
+.clock {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.2vmin;
+  line-height: 0.85;
+}
+.clock-time {
+  font-size: 22vmin;
+  font-weight: 300;
+  letter-spacing: -0.04em;
+}
+.clock-ampm {
+  font-size: 4.2vmin;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 2vmin;
+}
+.hero-sub {
+  font-size: 2.2vmin;
+  color: var(--muted);
+}
+.warn-text {
+  color: var(--amber-title);
+}
+
+.pill {
+  align-self: flex-start;
+  margin-top: 1vmin;
+  border-radius: 999px;
+  padding: 1.4vmin 3.2vmin;
+  font-size: 4.2vmin;
+  font-weight: 600;
+}
+.pill-calm {
+  background: var(--accent);
+  color: var(--bg);
+}
+.pill-warn {
+  background: var(--amber);
+  color: #2a1c05;
+}
+.pill-late {
+  background: var(--red);
+  color: #2a0808;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* ---------- side cards ---------- */
+.side {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.8vmin;
+  min-width: 0;
+}
+.card {
+  background: var(--card);
+  border-radius: 2.2vmin;
+  padding: 2vmin 2.6vmin;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vmin;
+}
+.card.muted {
+  color: var(--muted);
+  font-size: 2.2vmin;
+}
+.card-row {
+  display: flex;
+  align-items: center;
+  gap: 2vmin;
+  font-size: 1.6vmin;
+}
+.card-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3vmin;
+  min-width: 0;
+}
+.card-label {
+  display: flex;
+  align-items: center;
+  gap: 1vmin;
+  font-size: 1.6vmin;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.card-title {
+  font-size: 2.8vmin;
+  font-weight: 600;
+}
+.card-sub {
+  font-size: 1.9vmin;
+}
+.muted-text {
+  color: var(--muted);
+}
+.big {
+  font-size: 5.2vmin;
+  font-weight: 600;
+}
+
+.card-amber {
+  background: var(--amber-bg);
+}
+.card-amber.is-due {
+  box-shadow: 0 0 0 0.3vmin var(--amber);
+}
+.amber {
+  color: var(--amber-title);
+}
+.amber-sub {
+  color: var(--amber-sub);
+}
+.card-green {
+  background: var(--green-bg);
+}
+.green {
+  color: var(--green-title);
+}
+.green-sub {
+  color: var(--green-sub);
+}
+
+.refill-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2vmin;
+  margin-top: 1vmin;
+  padding-top: 1.2vmin;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 2vmin;
+  color: var(--amber-title);
+}
+
+/* ---------- buttons (big touch targets) ---------- */
+.btn {
+  min-height: max(44px, 6.4vmin);
+  padding: 0 2.6vmin;
+  border-radius: 1.6vmin;
+  font-family: inherit;
+  font-size: 2.3vmin;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.6;
+}
+.btn-amber {
+  border: none;
+  background: var(--amber);
+  color: #2a1c05;
+}
+.btn-outline-green {
+  border: 1px solid #3f7a5a;
+  background: transparent;
+  color: var(--green-title);
+  font-weight: 500;
+}
+.btn-ghost {
+  border: 1px solid rgba(251, 211, 141, 0.5);
+  background: transparent;
+  color: var(--amber-title);
+  font-weight: 500;
+}
+
+/* ---------- commute ---------- */
+.commute-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1.6vmin;
+}
+.status {
+  font-size: 2.2vmin;
+  font-weight: 500;
+}
+.status-normal {
+  color: var(--green);
+}
+.status-slower {
+  color: var(--amber-title);
+}
+.status-heavy {
+  color: var(--red);
+}
+
+/* ---------- weather ---------- */
+.weather {
+  flex-direction: row;
+  align-items: center;
+  gap: 2.6vmin;
+}
+.weather-now {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3vmin;
+}
+.weather-temp {
+  display: flex;
+  align-items: center;
+  gap: 1vmin;
+  font-size: 5.6vmin;
+  font-weight: 600;
+}
+.divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+}
+.weather-drives {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2vmin;
+  font-size: 2.1vmin;
+}
+.drive-row {
+  display: flex;
+  gap: 1.2vmin;
+}
+.drive-label {
+  color: var(--muted);
+  min-width: 11vmin;
+}
+.rain-text {
+  color: var(--rain);
+  font-weight: 500;
+}
+
+/* ---------- 7-day strip ---------- */
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1.2vmin;
+}
+.day {
+  background: var(--card);
+  border-radius: 1.8vmin;
+  padding: 1.2vmin 0.8vmin;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vmin;
+  font-size: 1.8vmin;
+}
+.day-name {
+  color: var(--muted);
+  font-weight: 500;
+}
+.day-temps {
+  font-size: 2vmin;
+  font-weight: 600;
+}
+
+/* ---------- misc ---------- */
+.offline {
+  position: fixed;
+  right: 2vmin;
+  bottom: 1vmin;
+  font-size: 1.4vmin;
+  color: var(--muted);
+}
+
+.night {
+  height: 100vh;
+  background: #000;
+  color: #2b2238;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8vmin;
+  font-weight: 300;
+}
+
+.setup {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  font-size: 1.2rem;
+  color: var(--muted);
+}
+.setup h1 {
+  color: var(--text);
+  margin: 0;
+}
+.setup code {
+  color: var(--accent);
+}
