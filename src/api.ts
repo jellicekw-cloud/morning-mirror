@@ -51,7 +51,10 @@ export interface MirrorData {
   };
 }
 
-const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+// The project URL is public (it's not a secret), so it's built in as a fallback.
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL || "https://zmtqlcbneupvjifdqrev.supabase.co";
+const BASE = `${SUPABASE_URL.replace(/\/+$/, "").replace(/\/rest\/v1$/, "")}/functions/v1`;
 const STORAGE_KEY = "mirror-device-key";
 
 export function loadDeviceKey(): string | null {
