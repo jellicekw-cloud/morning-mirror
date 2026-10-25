@@ -85,11 +85,18 @@ export function loadDeviceKey(): string | null {
   }
 }
 
+export class KeyRejectedError extends Error {
+  constructor() {
+    super("device key rejected");
+  }
+}
+
 export async function fetchMirror(key: string): Promise<MirrorData> {
   const r = await fetch(`${BASE}/mirror-data`, {
     headers: { "x-mirror-key": key },
     cache: "no-store",
   });
+  if (r.status === 401) throw new KeyRejectedError();
   if (!r.ok) throw new Error(`mirror-data ${r.status}`);
   return r.json();
 }

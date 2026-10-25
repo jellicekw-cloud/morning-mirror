@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchMirror, loadDeviceKey, medsAction, type HourSlot, type MirrorData } from "./api";
+import { fetchMirror, KeyRejectedError, loadDeviceKey, medsAction, type HourSlot, type MirrorData } from "./api";
 import { fmt12, nyNow, prettyDate, timeOfIso, toMin, type NyNow } from "./time";
 import { BellIcon, CarIcon, CheckIcon, WeatherIcon } from "./icons";
 
@@ -80,6 +80,7 @@ function useNow() {
 function useMirrorData(key: string | null) {
   const [data, setData] = useState<MirrorData | null>(null);
   const [offline, setOffline] = useState(false);
+  const [keyRejected, setKeyRejected] = useState(false);
   const [lastOk, setLastOk] = useState<Date | null>(null);
 
   const refresh = useCallback(async () => {
@@ -87,10 +88,12 @@ function useMirrorData(key: string | null) {
     try {
       setData(await fetchMirror(key));
       setOffline(false);
+      setKeyRejected(false);
       setLastOk(new Date());
     } catch (e) {
       console.error(e);
       setOffline(true);
+      setKeyRejected(e instanceof KeyRejectedError);
     }
   }, [key]);
 
@@ -100,7 +103,7 @@ function useMirrorData(key: string | null) {
     return () => clearInterval(t);
   }, [refresh]);
 
-  return { data, setData, offline, lastOk, refresh };
+  return { data, setData, offline, keyRejected, lastOk, refresh };
 }
 
 function useDailyReload() {
@@ -122,11 +125,12 @@ function useDailyReload() {
 export default function App() {
   const [key] = useState(loadDeviceKey);
   const now = useNow();
-  const { data, setData, offline, lastOk, refresh } = useMirrorData(key);
+  const { data, setData, offline, keyRejected, lastOk, refresh } = useMirrorData(key);
   const [busy, setBusy] = useState(false);
   useDailyReload();
 
   if (!key) return <Setup />;
+  if (keyRejected && !data) return <Setup rejected />;
 
   const night = now.minutes >= NIGHT_START || now.minutes < NIGHT_END;
   if (night) return <Night now={now} />;
@@ -569,11 +573,15 @@ function Night({ now }: { now: NyNow }) {
   );
 }
 
-function Setup() {
+function Setup({ rejected = false }: { rejected?: boolean }) {
   return (
     <div className="setup">
       <h1>Morning Mirror</h1>
-      <p>This screen needs its device key.</p>
+      <p>
+        {rejected
+          ? "The device key saved on this screen doesn't match. It was probably mistyped."
+          : "This screen needs its device key."}
+      </p>
       <p>
         Open this page once with <code>?key=YOUR_DEVICE_KEY</code> on the end of the address. It's saved on
         this device after that.
