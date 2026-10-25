@@ -10,6 +10,7 @@ import {
 } from "./api";
 import { fmt12, nyNow, prettyDate, timeOfIso, toMin, type NyNow } from "./time";
 import { BellIcon, CarIcon, CheckIcon, WeatherIcon } from "./icons";
+import { pickIdeas } from "./saturday";
 
 const REFRESH_MS = 2 * 60 * 1000;
 const MORNING_START = 4 * 60;        // 4:00 AM
@@ -21,6 +22,8 @@ const PREVIEW_FROM = 16 * 60;        // from 4 PM, show "Tomorrow" before a work
 const PHOTO_SECONDS = 30;
 const HOURLY_COUNT = 10;
 const PAYDAY_ANCHOR = "2026-10-30";  // every other Friday from here
+const IDEAS_START = 7 * 60;          // Saturday ideas card: 7 AM…
+const IDEAS_END = 18 * 60;           // …to 6 PM
 
 // ------------------------------------------------------------
 // Small helpers
@@ -156,6 +159,10 @@ export default function App() {
   const tomorrow = data?.weather?.tomorrow;
   const tomorrowIsWorkday = tomorrow ? [1, 2, 3, 4, 5].includes(dayIndex(tomorrow.date)) : false;
   const showPreview = !morning && now.minutes >= PREVIEW_FROM && tomorrowIsWorkday;
+  const forceIdeas = new URLSearchParams(window.location.search).has("ideas"); // preview: add ?ideas
+  const showIdeas =
+    !morning &&
+    (forceIdeas || (dayIndex(now.date) === 6 && now.minutes >= IDEAS_START && now.minutes < IDEAS_END));
 
   async function act(action: "took" | "undo" | "refilled") {
     if (!key || !data || busy) return;
@@ -183,7 +190,7 @@ export default function App() {
       <main className="main">
         <section className="hero">
           <div className="date">{now.dateLabel}</div>
-          <div className="clock">
+          <div className={`clock ${showIdeas ? "clock-compact" : ""}`}>
             <span className="clock-time">{now.clock}</span>
             <span className="clock-ampm">{now.ampm}</span>
           </div>
@@ -195,6 +202,9 @@ export default function App() {
               sunrise={data.weather.today?.sunrise}
               sunset={data.weather.today?.sunset}
             />
+          )}
+          {showIdeas && data?.weather && (
+            <IdeasCard date={now.date} rainChance={data.weather.days[0]?.rain ?? 0} />
           )}
         </section>
 
@@ -347,6 +357,26 @@ function HourlyStrip({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function IdeasCard({ date, rainChance }: { date: string; rainChance: number }) {
+  const ideas = pickIdeas(date, rainChance);
+  return (
+    <div className="ideas">
+      <span className="card-label">
+        Free &amp; cheap today{rainChance >= 50 ? " · rainy-day picks" : ""}
+      </span>
+      {ideas.map((idea) => (
+        <div className="idea" key={idea.id}>
+          <div className="idea-top">
+            <span className="idea-name">{idea.name}</span>
+            <span className={`idea-cost cost-${idea.cost === "Free" ? "free" : "paid"}`}>{idea.cost}</span>
+          </div>
+          <span className="idea-blurb">{idea.blurb}</span>
+        </div>
+      ))}
     </div>
   );
 }

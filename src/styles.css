@@ -500,3 +500,55 @@ body,
   font-size: 2.8vmin;
   font-weight: 600;
 }
+
+/* ---------- Saturday ideas ---------- */
+.clock-compact .clock-time {
+  font-size: 15vmin;
+}
+.clock-compact .clock-ampm {
+  font-size: 3.2vmin;
+  margin-top: 1.4vmin;
+}
+.ideas {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9vmin;
+  margin-top: 1.2vmin;
+}
+.idea {
+  background: var(--card);
+  border-radius: 1.6vmin;
+  padding: 1.1vmin 1.8vmin;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3vmin;
+}
+.idea-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.2vmin;
+}
+.idea-name {
+  font-size: 2.2vmin;
+  font-weight: 600;
+}
+.idea-blurb {
+  font-size: 1.7vmin;
+  color: var(--muted);
+}
+.idea-cost {
+  font-size: 1.5vmin;
+  font-weight: 600;
+  padding: 0.3vmin 1.2vmin;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.cost-free {
+  background: var(--green-bg);
+  color: var(--green-title);
+}
+.cost-paid {
+  background: var(--amber-bg);
+  color: var(--amber-title);
+}
