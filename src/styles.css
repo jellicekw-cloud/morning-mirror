@@ -552,3 +552,51 @@ body,
   background: var(--amber-bg);
   color: var(--amber-title);
 }
+
+/* ---------- grab-before-you-go checklist ---------- */
+.grab {
+  display: flex;
+  flex-direction: column;
+  gap: 1vmin;
+  margin-top: 1.6vmin;
+}
+.grab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2vmin;
+}
+.grab-item {
+  min-height: max(44px, 6vmin);
+  display: inline-flex;
+  align-items: center;
+  gap: 1.2vmin;
+  padding: 0 2.2vmin 0 1.4vmin;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 2.2vmin;
+  font-weight: 500;
+  cursor: pointer;
+}
+.grab-box {
+  width: 3vmin;
+  height: 3vmin;
+  border-radius: 50%;
+  border: 0.3vmin solid var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2vmin;
+}
+.grab-item.is-on {
+  background: var(--green-bg);
+  border-color: #3f7a5a;
+  color: var(--green-title);
+}
+.grab-item.is-on .grab-box {
+  border-color: var(--green);
+  background: var(--green);
+  color: var(--green-bg);
+}

@@ -195,6 +195,7 @@ export default function App() {
             <span className="clock-ampm">{now.ampm}</span>
           </div>
           {morning && data && <Countdown now={now} data={data} />}
+          {morning && <GrabChecklist date={now.date} />}
           {!morning && data?.weather?.hourly && (
             <HourlyStrip
               now={now}
@@ -251,6 +252,69 @@ function ProgressBar({ now, data }: { now: NyNow; data: MirrorData }) {
       </div>
       <div className="progress-track">
         <div className={`progress-fill ${over ? "is-over" : ""}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+// Edit this list to change what shows up. Ticks reset every morning.
+const GRAB_ITEMS = ["Keys", "Water bottle", "Badge"];
+const GRAB_STORAGE = "mirror-grab";
+
+function loadTicks(date: string): string[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(GRAB_STORAGE) ?? "null");
+    return saved?.date === date && Array.isArray(saved.items) ? saved.items : [];
+  } catch {
+    return [];
+  }
+}
+
+function GrabChecklist({ date }: { date: string }) {
+  const [ticked, setTicked] = useState<string[]>(() => loadTicks(date));
+
+  // New day → fresh list.
+  useEffect(() => {
+    setTicked(loadTicks(date));
+  }, [date]);
+
+  function toggle(item: string) {
+    const next = ticked.includes(item) ? ticked.filter((i) => i !== item) : [...ticked, item];
+    setTicked(next);
+    try {
+      localStorage.setItem(GRAB_STORAGE, JSON.stringify({ date, items: next }));
+    } catch {
+      /* storage blocked: still works until the page reloads */
+    }
+  }
+
+  const allDone = GRAB_ITEMS.every((i) => ticked.includes(i));
+
+  return (
+    <div className="grab">
+      <span className="card-label">{allDone ? "Got everything" : "Grab before you go"}</span>
+      <div className="grab-row">
+        {GRAB_ITEMS.map((item) => {
+          const on = ticked.includes(item);
+          return (
+            <button
+              type="button"
+              key={item}
+              className={`grab-item ${on ? "is-on" : ""}`}
+              aria-pressed={on}
+              onClick={() => toggle(item)}
+            >
+              <span className="grab-box" aria-hidden="true">
+                {on && (
+                  <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m5 12 5 5 9-10" />
+                  </svg>
+                )}
+              </span>
+              {item}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
