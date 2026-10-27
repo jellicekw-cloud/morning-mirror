@@ -258,7 +258,7 @@ function ProgressBar({ now, data }: { now: NyNow; data: MirrorData }) {
 }
 
 // Edit this list to change what shows up. Ticks reset every morning.
-const GRAB_ITEMS = ["Keys", "Water bottle", "Badge"];
+const GRAB_ITEMS = ["Keys", "Water bottle", "Badge", "Lunch"];
 const GRAB_STORAGE = "mirror-grab";
 
 function loadTicks(date: string): string[] {
