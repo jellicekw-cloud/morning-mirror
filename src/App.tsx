@@ -298,7 +298,7 @@ function ProgressBar({ now, data }: { now: NyNow; data: MirrorData }) {
 
 // Edit these lists to change what shows up. Ticks reset every day.
 const MORNING_ITEMS = ["Keys", "Water bottle", "Badge", "Lunch"];
-const EVENING_ITEMS = ["Pack lunch", "Lay out clothes", "Charge phone", "Plug in car"];
+const EVENING_ITEMS = ["Pack lunch", "Lay out clothes", "Charge phone", "Charge watch", "Plug in car"];
 
 function loadTicks(storageKey: string, date: string): string[] {
   try {
