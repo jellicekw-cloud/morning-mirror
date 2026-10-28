@@ -92,12 +92,25 @@ export class KeyRejectedError extends Error {
 }
 
 export async function fetchMirror(key: string): Promise<MirrorData> {
-  const r = await fetch(`${BASE}/mirror-data`, {
-    headers: { "x-mirror-key": key },
-    cache: "no-store",
-  });
+  let r: Response;
+  try {
+    r = await fetch(`${BASE}/mirror-data`, {
+      headers: { "x-mirror-key": key },
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error("No connection to Supabase (network or Wi-Fi)");
+  }
   if (r.status === 401) throw new KeyRejectedError();
-  if (!r.ok) throw new Error(`mirror-data ${r.status}`);
+  if (!r.ok) {
+    let detail = "";
+    try {
+      detail = (await r.text()).slice(0, 120);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`mirror-data error ${r.status}${detail ? `: ${detail}` : ""}`);
+  }
   return r.json();
 }
 

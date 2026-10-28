@@ -13,6 +13,7 @@ import { BellIcon, CarIcon, CheckIcon, WeatherIcon } from "./icons";
 import { pickIdeas } from "./saturday";
 
 const REFRESH_MS = 2 * 60 * 1000;
+const RETRY_MS = 20 * 1000;
 const MORNING_START = 4 * 60;        // 4:00 AM
 const MORNING_END = 5 * 60 + 30;     // 5:30 AM
 const NIGHT_START = 21 * 60;         // 9:00 PM → black screen
@@ -103,6 +104,7 @@ function useMirrorData(key: string | null) {
   const [offline, setOffline] = useState(false);
   const [keyRejected, setKeyRejected] = useState(false);
   const [lastOk, setLastOk] = useState<Date | null>(null);
+  const [errorText, setErrorText] = useState("");
 
   const refresh = useCallback(async () => {
     if (!key) return;
@@ -110,21 +112,26 @@ function useMirrorData(key: string | null) {
       setData(await fetchMirror(key));
       setOffline(false);
       setKeyRejected(false);
+      setErrorText("");
       setLastOk(new Date());
     } catch (e) {
       console.error(e);
       setOffline(true);
       setKeyRejected(e instanceof KeyRejectedError);
+      setErrorText(e instanceof Error ? e.message : String(e));
     }
   }, [key]);
 
+  // Normal: every 2 min. While failing: retry every 20 s so a blip clears fast.
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, REFRESH_MS);
-    return () => clearInterval(t);
   }, [refresh]);
+  useEffect(() => {
+    const t = setInterval(refresh, offline ? RETRY_MS : REFRESH_MS);
+    return () => clearInterval(t);
+  }, [refresh, offline]);
 
-  return { data, setData, offline, keyRejected, lastOk, refresh };
+  return { data, setData, offline, keyRejected, lastOk, errorText, refresh };
 }
 
 function useDailyReload() {
@@ -146,7 +153,7 @@ function useDailyReload() {
 export default function App() {
   const [key] = useState(loadDeviceKey);
   const now = useNow();
-  const { data, setData, offline, keyRejected, lastOk, refresh } = useMirrorData(key);
+  const { data, setData, offline, keyRejected, lastOk, errorText, refresh } = useMirrorData(key);
   const [busy, setBusy] = useState(false);
   useDailyReload();
 
@@ -237,7 +244,18 @@ export default function App() {
           {!morning && data && !showPreview && <PhotoCard photos={data.photos ?? []} />}
           {data?.weather && <WeatherCard data={data} morning={morning} nowMin={now.minutes} />}
           {!morning && data && <PaydayCard today={now.date} />}
-          {!data && <div className="card muted">{offline ? "Can't reach the server yet…" : "Loading…"}</div>}
+          {!data && (
+            <div className="card muted">
+              {offline ? (
+                <>
+                  <span>Can't reach the server. Retrying…</span>
+                  <span className="error-detail">{errorText}</span>
+                </>
+              ) : (
+                "Loading…"
+              )}
+            </div>
+          )}
         </section>
       </main>
 

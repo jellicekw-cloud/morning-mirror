@@ -601,3 +601,10 @@ body,
   background: var(--green);
   color: var(--green-bg);
 }
+
+.error-detail {
+  font-size: 1.5vmin;
+  color: var(--muted);
+  opacity: 0.8;
+  word-break: break-word;
+}
