@@ -19,6 +19,8 @@ const NIGHT_START = 21 * 60;         // 9:00 PM → black screen
 const NIGHT_END = 4 * 60;            // until 4:00 AM
 const DAILY_RELOAD = 3 * 60 + 55;    // reload at 3:55 AM to pick up new deploys
 const PREVIEW_FROM = 16 * 60;        // from 4 PM, show "Tomorrow" before a workday
+const BEDTIME = 21 * 60;             // 9:00 PM
+const WIND_DOWN = 30;                // amber for the last 30 min before bed
 const PHOTO_SECONDS = 30;
 const HOURLY_COUNT = 10;
 const PAYDAY_ANCHOR = "2026-10-30";  // every other Friday from here
@@ -159,6 +161,7 @@ export default function App() {
   const tomorrow = data?.weather?.tomorrow;
   const tomorrowIsWorkday = tomorrow ? [1, 2, 3, 4, 5].includes(dayIndex(tomorrow.date)) : false;
   const showPreview = !morning && now.minutes >= PREVIEW_FROM && tomorrowIsWorkday;
+  const evening = showPreview; // 4 PM → 9 PM before a workday: bedtime countdown + set-up list
   const forceIdeas = new URLSearchParams(window.location.search).has("ideas"); // preview: add ?ideas
   const showIdeas =
     !morning &&
@@ -195,8 +198,26 @@ export default function App() {
             <span className="clock-ampm">{now.ampm}</span>
           </div>
           {morning && data && <Countdown now={now} data={data} />}
-          {morning && <GrabChecklist date={now.date} />}
-          {!morning && data?.weather?.hourly && (
+          {morning && (
+            <Checklist
+              date={now.date}
+              items={MORNING_ITEMS}
+              storageKey="mirror-grab"
+              title="Grab before you go"
+              doneTitle="Got everything"
+            />
+          )}
+          {evening && data && <BedtimeCountdown now={now} alarm={data.schedule.alarm} />}
+          {evening && (
+            <Checklist
+              date={now.date}
+              items={EVENING_ITEMS}
+              storageKey="mirror-evening"
+              title="Set up tomorrow"
+              doneTitle="All set for tomorrow"
+            />
+          )}
+          {!morning && !evening && data?.weather?.hourly && (
             <HourlyStrip
               now={now}
               hours={data.weather.hourly}
@@ -257,44 +278,56 @@ function ProgressBar({ now, data }: { now: NyNow; data: MirrorData }) {
   );
 }
 
-// Edit this list to change what shows up. Ticks reset every morning.
-const GRAB_ITEMS = ["Keys", "Water bottle", "Badge", "Lunch"];
-const GRAB_STORAGE = "mirror-grab";
+// Edit these lists to change what shows up. Ticks reset every day.
+const MORNING_ITEMS = ["Keys", "Water bottle", "Badge", "Lunch"];
+const EVENING_ITEMS = ["Pack lunch", "Lay out clothes", "Charge phone", "Plug in car"];
 
-function loadTicks(date: string): string[] {
+function loadTicks(storageKey: string, date: string): string[] {
   try {
-    const saved = JSON.parse(localStorage.getItem(GRAB_STORAGE) ?? "null");
+    const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null");
     return saved?.date === date && Array.isArray(saved.items) ? saved.items : [];
   } catch {
     return [];
   }
 }
 
-function GrabChecklist({ date }: { date: string }) {
-  const [ticked, setTicked] = useState<string[]>(() => loadTicks(date));
+function Checklist({
+  date,
+  items,
+  storageKey,
+  title,
+  doneTitle,
+}: {
+  date: string;
+  items: string[];
+  storageKey: string;
+  title: string;
+  doneTitle: string;
+}) {
+  const [ticked, setTicked] = useState<string[]>(() => loadTicks(storageKey, date));
 
   // New day → fresh list.
   useEffect(() => {
-    setTicked(loadTicks(date));
-  }, [date]);
+    setTicked(loadTicks(storageKey, date));
+  }, [storageKey, date]);
 
   function toggle(item: string) {
     const next = ticked.includes(item) ? ticked.filter((i) => i !== item) : [...ticked, item];
     setTicked(next);
     try {
-      localStorage.setItem(GRAB_STORAGE, JSON.stringify({ date, items: next }));
+      localStorage.setItem(storageKey, JSON.stringify({ date, items: next }));
     } catch {
       /* storage blocked: still works until the page reloads */
     }
   }
 
-  const allDone = GRAB_ITEMS.every((i) => ticked.includes(i));
+  const allDone = items.every((i) => ticked.includes(i));
 
   return (
     <div className="grab">
-      <span className="card-label">{allDone ? "Got everything" : "Grab before you go"}</span>
+      <span className="card-label">{allDone ? doneTitle : title}</span>
       <div className="grab-row">
-        {GRAB_ITEMS.map((item) => {
+        {items.map((item) => {
           const on = ticked.includes(item);
           return (
             <button
@@ -317,6 +350,31 @@ function GrabChecklist({ date }: { date: string }) {
         })}
       </div>
     </div>
+  );
+}
+
+function BedtimeCountdown({ now, alarm }: { now: NyNow; alarm: string }) {
+  const exact = now.minutes + now.seconds / 60;
+  const left = Math.ceil(BEDTIME - exact);
+  const sleepMin = 24 * 60 - BEDTIME + toMin(alarm);
+  const sleepText = `${Math.floor(sleepMin / 60)} hr${sleepMin % 60 ? ` ${sleepMin % 60} min` : ""}`;
+
+  const text =
+    left > 60
+      ? `Bed in ${Math.floor(left / 60)} hr${left % 60 ? ` ${left % 60} min` : ""}`
+      : left > 0
+        ? `Bed in ${left} min`
+        : "Bedtime";
+  const state = left > WIND_DOWN ? "calm" : "warn";
+
+  return (
+    <>
+      <div className={`pill pill-${state}`}>{text}</div>
+      <div className="hero-sub">
+        {left <= WIND_DOWN && left > 0 ? "Start winding down · " : ""}
+        Bedtime {fmt12(BEDTIME, true)} · {sleepText} until your {fmt12(alarm, true)} alarm
+      </div>
+    </>
   );
 }
 
