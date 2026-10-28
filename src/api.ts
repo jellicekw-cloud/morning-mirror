@@ -42,6 +42,7 @@ export interface DepartureStats {
 export interface MirrorData {
   now: { date: string; weekday: string; minutes: number };
   photos?: string[];
+  photosSkipped?: number;   // photos in a format the screen can't show (e.g. HEIC)
   // undefined = older server code; null = table not created yet
   departures?: null | {
     today: Departure | null;

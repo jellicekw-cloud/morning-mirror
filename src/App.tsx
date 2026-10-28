@@ -308,7 +308,7 @@ export default function App() {
           {data && <MedsCard data={data} now={now} morning={morning} busy={busy} onAction={act} />}
           {morning && data && <CommuteCard data={data} />}
           {!morning && data && showPreview && <TomorrowCard data={data} />}
-          {!morning && data && !showPreview && <PhotoCard photos={data.photos ?? []} />}
+          {!morning && data && !showPreview && <PhotoCard photos={data.photos ?? []} skipped={data.photosSkipped ?? 0} />}
           {data?.weather && <WeatherCard data={data} morning={morning} nowMin={now.minutes} />}
           {!morning && data && <PaydayCard today={now.date} />}
           {!data && (
@@ -620,7 +620,7 @@ function IdeasCard({ date, rainChance }: { date: string; rainChance: number }) {
   );
 }
 
-function PhotoCard({ photos }: { photos: string[] }) {
+function PhotoCard({ photos, skipped }: { photos: string[]; skipped: number }) {
   const [i, setI] = useState(0);
 
   useEffect(() => {
@@ -639,8 +639,19 @@ function PhotoCard({ photos }: { photos: string[] }) {
   if (!photos.length) {
     return (
       <div className="photo photo-empty">
-        <span className="photo-empty-title">Your photos go here</span>
-        <span className="muted-text">Supabase → Storage → mirror-photos → Upload</span>
+        {skipped > 0 ? (
+          <>
+            <span className="photo-empty-title">
+              Found {skipped} photo{skipped === 1 ? "" : "s"} the screen can't show
+            </span>
+            <span className="muted-text">They're probably HEIC. Upload JPG or PNG versions instead.</span>
+          </>
+        ) : (
+          <>
+            <span className="photo-empty-title">Your photos go here</span>
+            <span className="muted-text">Supabase → Storage → mirror-photos → Upload</span>
+          </>
+        )}
       </div>
     );
   }

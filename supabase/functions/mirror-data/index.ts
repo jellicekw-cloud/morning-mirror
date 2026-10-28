@@ -14,7 +14,7 @@ const COMMUTE_TTL_MIN = 4;
 const COMMUTE_WINDOW_START = 4 * 60;        // 4:00 AM
 const COMMUTE_WINDOW_END = 5 * 60 + 30;     // 5:30 AM
 const PHOTO_BUCKET = "mirror-photos";
-const PHOTOS_TTL_MIN = 30;                  // new uploads show up within 30 min
+const PHOTOS_TTL_MIN = 10;                  // new uploads show up within 10 min
 const PHOTO_LINK_HOURS = 2;                 // private links stay valid 2 hours
 
 const DEVICE_KEY = Deno.env.get("MIRROR_DEVICE_KEY") ?? "";
@@ -273,13 +273,21 @@ async function getCommute(today: string) {
 }
 
 // ---------- photos (private Supabase Storage bucket) ----------
-async function getPhotos(): Promise<string[] | null> {
-  const bucket = db.storage.from(PHOTO_BUCKET);
-  const { data, error } = await bucket.list("", {
-    limit: 200,
-    sortBy: { column: "name", order: "asc" },
-  });
+// Finds photos at the top of the bucket AND one folder deep, so uploading
+// into a folder still works. Reports files it can't show (like HEIC).
+const SHOWABLE = /\.(jpe?g|png|webp|gif)$/i;
+const PHOTO_LIKE = /\.(heic|heif|dng|raw|tiff?|bmp)$/i;
 
+interface PhotoResult {
+  urls: string[];
+  skipped: number;   // photos in a format the screen can't show
+}
+
+async function getPhotos(): Promise<PhotoResult | null> {
+  const bucket = db.storage.from(PHOTO_BUCKET);
+  const opts = { limit: 500, sortBy: { column: "name", order: "asc" as const } };
+
+  const { data: top, error } = await bucket.list("", opts);
   if (error) {
     // First run: the bucket doesn't exist yet, so create it (private).
     const created = await db.storage.createBucket(PHOTO_BUCKET, { public: false });
@@ -287,20 +295,39 @@ async function getPhotos(): Promise<string[] | null> {
       console.error("photos: create bucket", created.error);
       return null;
     }
-    return [];
+    return { urls: [], skipped: 0 };
   }
 
-  const names = (data ?? [])
-    .filter((f) => f.id && /\.(jpe?g|png|webp|gif)$/i.test(f.name))
-    .map((f) => f.name);
-  if (!names.length) return [];
+  const paths: string[] = [];
+  let skipped = 0;
+  const take = (name: string, path: string) => {
+    if (SHOWABLE.test(name)) paths.push(path);
+    else if (PHOTO_LIKE.test(name)) skipped++;
+  };
 
-  const { data: signed, error: signErr } = await bucket.createSignedUrls(names, PHOTO_LINK_HOURS * 3600);
+  for (const item of top ?? []) {
+    if (item.id) {
+      take(item.name, item.name);
+    } else {
+      // A folder: look inside it (one level).
+      const { data: inner } = await bucket.list(item.name, opts);
+      for (const f of inner ?? []) {
+        if (f.id) take(f.name, `${item.name}/${f.name}`);
+      }
+    }
+  }
+
+  if (!paths.length) return { urls: [], skipped };
+
+  const { data: signed, error: signErr } = await bucket.createSignedUrls(paths, PHOTO_LINK_HOURS * 3600);
   if (signErr) {
     console.error("photos: sign", signErr);
     return null;
   }
-  return (signed ?? []).filter((s) => s.signedUrl).map((s) => s.signedUrl as string);
+  return {
+    urls: (signed ?? []).filter((x) => x.signedUrl).map((x) => x.signedUrl as string),
+    skipped,
+  };
 }
 
 type Commute = NonNullable<Awaited<ReturnType<typeof getCommute>>>;
@@ -421,12 +448,14 @@ Deno.serve(async (req) => {
     }
 
     // Photos (slideshow on the weekend / off-hours view)
-    const photos = (await cached<string[]>("photos", PHOTOS_TTL_MIN, getPhotos)) ?? [];
+    const photoResult = await cached<PhotoResult>("photos-v2", PHOTOS_TTL_MIN, getPhotos);
+    const photos = photoResult?.urls ?? [];
     const departures = await getDepartures(now.date);
 
     return json({
       now: { date: now.date, weekday: now.weekday, minutes: now.minutes },
       photos,
+      photosSkipped: photoResult?.skipped ?? 0,
       departures,
       isWorkday,
       schedule: {
