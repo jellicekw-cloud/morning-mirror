@@ -11,6 +11,18 @@ import {
 import { fmt12, nyNow, prettyDate, timeOfIso, toMin, type NyNow } from "./time";
 import { BellIcon, CarIcon, CheckIcon, WeatherIcon } from "./icons";
 import { pickIdeas } from "./saturday";
+import {
+  departureView,
+  flushPending,
+  gradeDeparture,
+  readLog,
+  recordLocal,
+  removeLocal,
+  sendGo,
+  STATUS_TEXT,
+  type LocalDeparture,
+} from "./departures";
+import type { Departure, DepartureStats } from "./api";
 
 const REFRESH_MS = 2 * 60 * 1000;
 const RETRY_MS = 20 * 1000;
@@ -155,7 +167,17 @@ export default function App() {
   const now = useNow();
   const { data, setData, offline, keyRejected, lastOk, errorText, refresh } = useMirrorData(key);
   const [busy, setBusy] = useState(false);
+  const [goLog, setGoLog] = useState<LocalDeparture[]>(readLog);
   useDailyReload();
+
+  // Send any Go taps that were saved while the server couldn't take them.
+  useEffect(() => {
+    if (!key || !data) return;
+    flushPending(key, data).then((sent) => {
+      setGoLog(readLog());
+      if (sent) refresh();
+    });
+  }, [key, data, refresh]);
 
   if (!key) return <Setup />;
   if (keyRejected && !data) return <Setup rejected />;
@@ -173,6 +195,39 @@ export default function App() {
   const showIdeas =
     !morning &&
     (forceIdeas || (dayIndex(now.date) === 6 && now.minutes >= IDEAS_START && now.minutes < IDEAS_END));
+
+  const depart = departureView(data, now.date, goLog);
+  const departedToday = morning && !!depart.today;
+
+  async function go() {
+    if (!key || !data || busy || depart.today) return;
+    const leftMin = now.minutes;
+    const entry: Departure = {
+      local_date: now.date,
+      left_at: new Date().toISOString(),
+      left_min: leftMin,
+      status: gradeDeparture(leftMin, data.schedule.leaveIdeal, data.schedule.leaveLatest),
+    };
+    setGoLog(recordLocal(entry));
+    setBusy(true);
+    await sendGo(key, entry);
+    setGoLog(readLog());
+    await refresh();
+    setBusy(false);
+  }
+
+  async function undoGo() {
+    if (!key || busy) return;
+    setBusy(true);
+    setGoLog(removeLocal(now.date));
+    try {
+      await medsAction(key, "go_undo");
+    } catch (e) {
+      console.error(e);
+    }
+    await refresh();
+    setBusy(false);
+  }
 
   async function act(action: "took" | "undo" | "refilled") {
     if (!key || !data || busy) return;
@@ -194,8 +249,8 @@ export default function App() {
   }
 
   return (
-    <div className="mirror">
-      {morning && data && <ProgressBar now={now} data={data} />}
+    <div className={`mirror ${departedToday ? "is-departed" : ""}`}>
+      {morning && data && !departedToday && <ProgressBar now={now} data={data} />}
 
       <main className="main">
         <section className="hero">
@@ -204,8 +259,19 @@ export default function App() {
             <span className="clock-time">{now.clock}</span>
             <span className="clock-ampm">{now.ampm}</span>
           </div>
-          {morning && data && <Countdown now={now} data={data} />}
-          {morning && (
+          {morning && data && !departedToday && (
+            <div className="countdown-row">
+              <Countdown now={now} data={data} />
+              <button type="button" className="btn-go" disabled={busy} onClick={go}>
+                Go
+              </button>
+            </div>
+          )}
+          {departedToday && depart.today && (
+            <Departed departure={depart.today} busy={busy} onUndo={undoGo} />
+          )}
+          {morning && <WeekLine week={depart.week} />}
+          {morning && !departedToday && (
             <Checklist
               date={now.date}
               items={MORNING_ITEMS}
@@ -215,6 +281,7 @@ export default function App() {
             />
           )}
           {evening && data && <BedtimeCountdown now={now} alarm={data.schedule.alarm} />}
+          {evening && <WeekLine week={depart.week} />}
           {evening && (
             <Checklist
               date={now.date}
@@ -396,6 +463,38 @@ function BedtimeCountdown({ now, alarm }: { now: NyNow; alarm: string }) {
   );
 }
 
+function Departed({
+  departure,
+  busy,
+  onUndo,
+}: {
+  departure: Departure;
+  busy: boolean;
+  onUndo: () => void;
+}) {
+  return (
+    <div className="countdown-col">
+      <div className={`pill pill-depart-${departure.status}`}>Left at {fmt12(departure.left_min, true)}</div>
+      <div className="hero-sub departed-sub">
+        <span>{STATUS_TEXT[departure.status]} · Have a good day</span>
+        <button type="button" className="link-btn" disabled={busy} onClick={onUndo}>
+          Undo
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WeekLine({ week }: { week: DepartureStats }) {
+  if (!week.count) return null;
+  return (
+    <div className="week-line">
+      This week: {week.onTime} of {week.count} on time
+      {week.avgMin != null ? ` · usually ${fmt12(week.avgMin)}` : ""}
+    </div>
+  );
+}
+
 function Countdown({ now, data }: { now: NyNow; data: MirrorData }) {
   const leaveBy = toMin(data.commute?.leaveBy ?? data.schedule.leaveIdeal);
   const latest = toMin(data.commute?.leaveLatest ?? data.schedule.leaveLatest);
@@ -416,7 +515,7 @@ function Countdown({ now, data }: { now: NyNow; data: MirrorData }) {
   }
 
   return (
-    <>
+    <div className="countdown-col">
       <div className={`pill pill-${state}`}>{text}</div>
       <div className="hero-sub">
         {data.commute?.movedEarlier ? (
@@ -426,7 +525,7 @@ function Countdown({ now, data }: { now: NyNow; data: MirrorData }) {
         )}
         Latest {fmt12(latest)} · Goal there by {fmt12(data.schedule.arriveGoal)}
       </div>
-    </>
+    </div>
   );
 }
 

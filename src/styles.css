@@ -608,3 +608,68 @@ body,
   opacity: 0.8;
   word-break: break-word;
 }
+
+/* ---------- Go button ---------- */
+.countdown-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 2.4vmin;
+  flex-wrap: wrap;
+}
+.countdown-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2vmin;
+}
+.btn-go {
+  min-height: max(56px, 9vmin);
+  min-width: max(96px, 15vmin);
+  border: none;
+  border-radius: 999px;
+  background: var(--green);
+  color: #08281a;
+  font-family: inherit;
+  font-size: 4vmin;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.btn-go:disabled {
+  opacity: 0.6;
+}
+.pill-depart-on_time {
+  background: var(--green);
+  color: #08281a;
+}
+.pill-depart-close {
+  background: var(--amber);
+  color: #2a1c05;
+}
+.pill-depart-late {
+  background: var(--red);
+  color: #2a0808;
+}
+.departed-sub {
+  display: flex;
+  align-items: center;
+  gap: 2vmin;
+}
+.link-btn {
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 2vmin;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0 1vmin;
+}
+.week-line {
+  font-size: 2vmin;
+  color: var(--muted);
+}
+/* After Go: dim everything, nobody's looking */
+.mirror.is-departed {
+  opacity: 0.45;
+}

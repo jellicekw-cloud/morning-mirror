@@ -22,9 +22,32 @@ export interface HourSlot extends Hour {
   time: string;   // "2026-10-25T19:00" (New York time)
 }
 
+export type DepartureStatus = "on_time" | "close" | "late";
+
+export interface Departure {
+  local_date: string;
+  left_at: string;
+  left_min: number;
+  status: DepartureStatus;
+}
+
+export interface DepartureStats {
+  count: number;
+  onTime: number;
+  close: number;
+  late: number;
+  avgMin: number | null;
+}
+
 export interface MirrorData {
   now: { date: string; weekday: string; minutes: number };
   photos?: string[];
+  // undefined = older server code; null = table not created yet
+  departures?: null | {
+    today: Departure | null;
+    week: DepartureStats;
+    last4Weeks: { count: number; onTime: number; avgMin: number | null };
+  };
   isWorkday: boolean;
   schedule: {
     alarm: string;
@@ -114,11 +137,13 @@ export async function fetchMirror(key: string): Promise<MirrorData> {
   return r.json();
 }
 
-export async function medsAction(key: string, action: "took" | "undo" | "refilled") {
+export type MirrorAction = "took" | "undo" | "refilled" | "go" | "go_undo";
+
+export async function medsAction(key: string, action: MirrorAction, at?: string) {
   const r = await fetch(`${BASE}/mirror-meds`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-mirror-key": key },
-    body: JSON.stringify({ action }),
+    body: JSON.stringify(at ? { action, at } : { action }),
   });
   if (!r.ok) throw new Error(`mirror-meds ${r.status}`);
   return r.json();

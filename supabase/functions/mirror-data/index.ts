@@ -306,6 +306,48 @@ async function getPhotos(): Promise<string[] | null> {
 type Commute = NonNullable<Awaited<ReturnType<typeof getCommute>>>;
 type Weather = NonNullable<Awaited<ReturnType<typeof getWeather>>>;
 
+// ---------- Go button: today + this week ----------
+async function getDepartures(today: string) {
+  // Monday of this week
+  const [y, m, d] = today.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sun
+  const monday = addDays(today, -((dow + 6) % 7));
+  const since = addDays(today, -27);
+
+  const { data, error } = await db
+    .from("mirror_departures")
+    .select("local_date, left_at, left_min, status")
+    .gte("local_date", since)
+    .order("local_date", { ascending: true });
+
+  if (error) {
+    // Table not created yet → the screen keeps Go taps locally until it is.
+    console.warn("departures:", error.message);
+    return null;
+  }
+
+  const rows = data ?? [];
+  const week = rows.filter((r) => r.local_date >= monday);
+  const avg = (list: typeof rows) =>
+    list.length ? Math.round(list.reduce((n, r) => n + r.left_min, 0) / list.length) : null;
+
+  return {
+    today: rows.find((r) => r.local_date === today) ?? null,
+    week: {
+      count: week.length,
+      onTime: week.filter((r) => r.status === "on_time").length,
+      close: week.filter((r) => r.status === "close").length,
+      late: week.filter((r) => r.status === "late").length,
+      avgMin: avg(week),
+    },
+    last4Weeks: {
+      count: rows.length,
+      onTime: rows.filter((r) => r.status === "on_time").length,
+      avgMin: avg(rows),
+    },
+  };
+}
+
 // ---------- handler ----------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -380,10 +422,12 @@ Deno.serve(async (req) => {
 
     // Photos (slideshow on the weekend / off-hours view)
     const photos = (await cached<string[]>("photos", PHOTOS_TTL_MIN, getPhotos)) ?? [];
+    const departures = await getDepartures(now.date);
 
     return json({
       now: { date: now.date, weekday: now.weekday, minutes: now.minutes },
       photos,
+      departures,
       isWorkday,
       schedule: {
         alarm: "04:15",
