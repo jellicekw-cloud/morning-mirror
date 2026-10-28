@@ -658,8 +658,10 @@ function PhotoCard({ photos, skipped }: { photos: string[]; skipped: number }) {
 
   const src = photos[i % photos.length];
   return (
-    <div className="photo">
-      <img key={src} src={src} alt="" className="photo-img" />
+    <div className="photo" key={src}>
+      {/* Blurred copy fills the empty sides; the real photo shows whole on top. */}
+      <img src={src} alt="" className="photo-fill" aria-hidden="true" />
+      <img src={src} alt="" className="photo-img" />
     </div>
   );
 }
