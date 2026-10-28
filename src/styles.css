@@ -445,9 +445,10 @@ body,
 
 .photo {
   position: relative;
-  flex: 1 1 28vmin;
-  min-height: 14vmin;
-  max-height: 36vmin;
+  flex: 1 1 0;
+  min-height: 26vmin;
+  display: flex;
+  gap: 0.6vmin;
   border-radius: 2.2vmin;
   overflow: hidden;
   background: var(--card);
@@ -463,10 +464,28 @@ body,
 }
 .photo-img {
   position: relative;
+  flex: 1 1 0;
+  min-width: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
   display: block;
+}
+.photo-cover {
+  object-fit: cover;
+  object-position: center 30%; /* keep faces in frame */
+}
+.photo-contain {
+  object-fit: contain;
+}
+.photo-count {
+  position: absolute;
+  right: 1.2vmin;
+  bottom: 1vmin;
+  padding: 0.2vmin 1vmin;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 1.3vmin;
 }
 @keyframes photo-in {
   from {

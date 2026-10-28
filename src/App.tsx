@@ -620,21 +620,53 @@ function IdeasCard({ date, rainChance }: { date: string; rainChance: number }) {
   );
 }
 
+// Photo slideshow. Portrait photos are shown two at a time side by side so
+// they fill the card; landscape photos fill it on their own.
+type Slide = string[]; // one or two photo URLs
+
+function photoId(url: string) {
+  // Signed links change every few minutes; the file path part stays the same.
+  return url.split("?")[0];
+}
+
+function buildSlides(photos: string[], ratios: Record<string, number>): Slide[] {
+  const slides: Slide[] = [];
+  const isPortrait = (u: string) => (ratios[photoId(u)] ?? 1.5) < 0.95;
+  for (let n = 0; n < photos.length; n++) {
+    const a = photos[n];
+    const b = photos[n + 1];
+    if (isPortrait(a) && b && isPortrait(b)) {
+      slides.push([a, b]);
+      n++;
+    } else {
+      slides.push([a]);
+    }
+  }
+  return slides;
+}
+
 function PhotoCard({ photos, skipped }: { photos: string[]; skipped: number }) {
-  const [i, setI] = useState(0);
+  // Width ÷ height of each photo, learned as they load.
+  const [ratios, setRatios] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (photos.length < 2) return;
-    const t = setInterval(() => setI((n) => (n + 1) % photos.length), PHOTO_SECONDS * 1000);
-    return () => clearInterval(t);
-  }, [photos.length]);
-
-  // Preload the next photo so the swap is instant.
-  useEffect(() => {
-    if (photos.length < 2) return;
-    const img = new Image();
-    img.src = photos[(i + 1) % photos.length];
-  }, [i, photos]);
+    let cancelled = false;
+    for (const url of photos) {
+      const id = photoId(url);
+      if (ratios[id] != null) continue;
+      const img = new Image();
+      img.onload = () => {
+        if (!cancelled && img.naturalHeight) {
+          setRatios((r) => ({ ...r, [id]: img.naturalWidth / img.naturalHeight }));
+        }
+      };
+      img.src = url;
+    }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos]);
 
   if (!photos.length) {
     return (
@@ -656,12 +688,24 @@ function PhotoCard({ photos, skipped }: { photos: string[]; skipped: number }) {
     );
   }
 
-  const src = photos[i % photos.length];
+  const slides = buildSlides(photos, ratios);
+  // Rotation follows the clock, so it keeps going even if the card redraws.
+  const index = Math.floor(Date.now() / (PHOTO_SECONDS * 1000)) % slides.length;
+  const slide = slides[index];
+
   return (
-    <div className="photo" key={src}>
-      {/* Blurred copy fills the empty sides; the real photo shows whole on top. */}
-      <img src={src} alt="" className="photo-fill" aria-hidden="true" />
-      <img src={src} alt="" className="photo-img" />
+    <div className={`photo ${slide.length === 2 ? "photo-pair" : ""}`} key={slide.map(photoId).join("|")}>
+      {slide.length === 1 && <img src={slide[0]} alt="" className="photo-fill" aria-hidden="true" />}
+      {slide.map((src) => {
+        const r = ratios[photoId(src)] ?? 1.5;
+        const fit = slide.length === 2 || r >= 0.95 ? "photo-cover" : "photo-contain";
+        return <img key={photoId(src)} src={src} alt="" className={`photo-img ${fit}`} />;
+      })}
+      {photos.length > 1 && (
+        <span className="photo-count">
+          {index + 1} / {slides.length}
+        </span>
+      )}
     </div>
   );
 }
