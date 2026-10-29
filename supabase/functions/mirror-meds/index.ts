@@ -4,6 +4,7 @@
 // screen or from the buttons on your phone notification.
 //
 // POST body: { "action": "took" | "undo" | "refilled" | "go" | "go_undo", "at"?: ISO time }
+//        or { "action": "mode", "day": "today" | "tomorrow", "mode": "office" | "wfh" | "auto" }
 //   "at" lets the screen send a Go tap it saved while offline.
 // Header x-mirror-key:
 //   MIRROR_DEVICE_KEY → from the screen
@@ -73,9 +74,13 @@ Deno.serve(async (req) => {
 
   let action = "";
   let at: Date | null = null;
+  let day = "";
+  let mode = "";
   try {
     const body = await req.json();
     action = body?.action ?? "";
+    day = body?.day ?? "";
+    mode = body?.mode ?? "";
     if (body?.at) {
       const d = new Date(body.at);
       // Only accept a saved tap from the last 7 days, never the future.
@@ -153,6 +158,25 @@ Deno.serve(async (req) => {
       const { error } = await db.from("mirror_departures").delete().eq("local_date", today);
       if (error) throw error;
       return json({ ok: true, action, date: today });
+    }
+
+    if (action === "mode") {
+      if (!["today", "tomorrow"].includes(day) || !["office", "wfh", "auto"].includes(mode)) {
+        return json({ error: "bad_mode" }, 400);
+      }
+      const [y, m, d] = today.split("-").map(Number);
+      const date =
+        day === "today" ? today : new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+      if (mode === "auto") {
+        const { error } = await db.from("mirror_day_mode").delete().eq("local_date", date);
+        if (error) throw error;
+      } else {
+        const { error } = await db
+          .from("mirror_day_mode")
+          .upsert({ local_date: date, mode, set_at: new Date().toISOString() }, { onConflict: "local_date" });
+        if (error) throw error;
+      }
+      return json({ ok: true, action, date, mode });
     }
 
     return json({ error: "unknown_action" }, 400);

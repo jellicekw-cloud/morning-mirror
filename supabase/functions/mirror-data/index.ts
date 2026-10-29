@@ -375,6 +375,50 @@ async function getDepartures(today: string) {
   };
 }
 
+
+// ---------- office / work-from-home / day off ----------
+type DayMode = "office" | "wfh" | "off";
+
+function weekdayOf(date: string) {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sun
+}
+
+function defaultMode(s: Record<string, unknown>, date: string): DayMode {
+  const dow = weekdayOf(date);
+  if (dow === 0 || dow === 6) return "off";
+  const wfh = Array.isArray(s.wfh_weekdays) ? (s.wfh_weekdays as number[]) : [5];
+  return wfh.includes(dow) ? "wfh" : "office";
+}
+
+/** Today's and tomorrow's mode, including one-off changes. */
+async function dayModes(s: Record<string, unknown>, today: string) {
+  const tomorrow = addDays(today, 1);
+  const modes = { today: defaultMode(s, today), tomorrow: defaultMode(s, tomorrow), todayChanged: false, tomorrowChanged: false };
+  const { data, error } = await db
+    .from("mirror_day_mode")
+    .select("local_date, mode")
+    .in("local_date", [today, tomorrow]);
+  if (error) return modes; // table not set up yet → defaults
+  for (const row of data ?? []) {
+    if (row.local_date === today && modes.today !== "off") {
+      modes.todayChanged = row.mode !== modes.today;
+      modes.today = row.mode;
+    }
+    if (row.local_date === tomorrow && modes.tomorrow !== "off") {
+      modes.tomorrowChanged = row.mode !== modes.tomorrow;
+      modes.tomorrow = row.mode;
+    }
+  }
+  return modes;
+}
+
+function medsTimeFor(s: Record<string, string>, mode: DayMode) {
+  if (mode === "off") return s.meds_time_weekend;
+  if (mode === "wfh") return s.wfh_meds_time ?? "06:00";
+  return s.meds_time_weekday;
+}
+
 // ---------- handler ----------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -392,9 +436,10 @@ Deno.serve(async (req) => {
 
     const now = localNow(s.timezone);
     const isWorkday = now.isWeekday;
+    const mode = await dayModes(s, now.date);
 
     // Meds
-    const medsMin = toMin(isWorkday ? s.meds_time_weekday : s.meds_time_weekend);
+    const medsMin = toMin(medsTimeFor(s, mode.today));
     const { data: med } = await db
       .from("mirror_meds_log")
       .select("taken_at, source")
@@ -421,10 +466,10 @@ Deno.serve(async (req) => {
       () => getWeather(now.date, s.timezone, s.work_end_time),
     );
 
-    // Commute (weekday mornings only)
+    // Commute (office mornings only)
     let commute = null;
     if (
-      isWorkday &&
+      mode.today === "office" &&
       now.minutes >= COMMUTE_WINDOW_START &&
       now.minutes <= COMMUTE_WINDOW_END
     ) {
@@ -458,8 +503,12 @@ Deno.serve(async (req) => {
       photosSkipped: photoResult?.skipped ?? 0,
       departures,
       isWorkday,
+      mode,
       schedule: {
-        alarm: "04:15",
+        alarm: mode.today === "wfh" ? String(s.wfh_alarm_time ?? "05:45").slice(0, 5) : "04:15",
+        officeAlarm: "04:15",
+        wfhAlarm: String(s.wfh_alarm_time ?? "05:45").slice(0, 5),
+        logon: String(s.wfh_logon_time ?? "06:00").slice(0, 5),
         leaveIdeal: s.leave_ideal_time.slice(0, 5),
         leaveLatest: s.leave_latest_time.slice(0, 5),
         arriveGoal: s.arrive_goal_time.slice(0, 5),

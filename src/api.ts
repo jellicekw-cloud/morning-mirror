@@ -39,7 +39,10 @@ export interface DepartureStats {
   avgMin: number | null;
 }
 
+export type DayMode = "office" | "wfh" | "off";
+
 export interface MirrorData {
+  mode?: { today: DayMode; tomorrow: DayMode; todayChanged: boolean; tomorrowChanged: boolean };
   now: { date: string; weekday: string; minutes: number };
   photos?: string[];
   photosSkipped?: number;   // photos in a format the screen can't show (e.g. HEIC)
@@ -52,6 +55,9 @@ export interface MirrorData {
   isWorkday: boolean;
   schedule: {
     alarm: string;
+    officeAlarm?: string;
+    wfhAlarm?: string;
+    logon?: string;
     leaveIdeal: string;
     leaveLatest: string;
     arriveGoal: string;
@@ -145,6 +151,16 @@ export async function medsAction(key: string, action: MirrorAction, at?: string)
     method: "POST",
     headers: { "Content-Type": "application/json", "x-mirror-key": key },
     body: JSON.stringify(at ? { action, at } : { action }),
+  });
+  if (!r.ok) throw new Error(`mirror-meds ${r.status}`);
+  return r.json();
+}
+
+export async function setDayMode(key: string, day: "today" | "tomorrow", mode: "office" | "wfh" | "auto") {
+  const r = await fetch(`${BASE}/mirror-meds`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-mirror-key": key },
+    body: JSON.stringify({ action: "mode", day, mode }),
   });
   if (!r.ok) throw new Error(`mirror-meds ${r.status}`);
   return r.json();

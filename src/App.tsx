@@ -4,6 +4,8 @@ import {
   KeyRejectedError,
   loadDeviceKey,
   medsAction,
+  setDayMode,
+  type DayMode,
   type HourSlot,
   type Kind,
   type MirrorData,
@@ -34,7 +36,10 @@ const NIGHT_START = 21 * 60;         // 9:00 PM → black screen
 const NIGHT_END = 4 * 60;            // until 4:00 AM
 const DAILY_RELOAD = 3 * 60 + 55;    // reload at 3:55 AM to pick up new deploys
 const PREVIEW_FROM = 16 * 60;        // from 4 PM, show "Tomorrow" before a workday
-const BEDTIME = 21 * 60;             // 9:00 PM
+const BEDTIME = 21 * 60;             // 9:00 PM before an office day
+const WFH_BEDTIME = 22 * 60;         // 10:00 PM before a work-from-home day
+const WFH_MORNING_START = 5 * 60 + 30; // WFH morning view 5:30…
+const WFH_MORNING_END = 6 * 60 + 30;   // …to 6:30 AM
 const WIND_DOWN = 30;                // amber for the last 30 min before bed
 const PHOTO_SECONDS = 30;
 const HOURLY_COUNT = 10;
@@ -189,15 +194,23 @@ export default function App() {
   if (!key) return <Setup />;
   if (keyRejected && !data) return <Setup rejected />;
 
-  const night = now.minutes >= NIGHT_START || now.minutes < NIGHT_END;
+  const modes = resolveModes(data, now.date);
+  const tomorrowWfh = modes.tomorrow === "wfh";
+  const bedtime = tomorrowWfh ? WFH_BEDTIME : BEDTIME;
+
+  const night = now.minutes >= Math.max(bedtime, NIGHT_START) || now.minutes < NIGHT_END;
   if (night) return <Night now={now} alerts={alerts} />;
 
-  const morning = now.isWeekday && now.minutes >= MORNING_START && now.minutes <= MORNING_END;
+  // Office mornings: commute countdown. WFH mornings: log-on countdown.
+  const morning = modes.today === "office" && now.minutes >= MORNING_START && now.minutes <= MORNING_END;
+  const wfhMorning = modes.today === "wfh" && now.minutes >= WFH_MORNING_START && now.minutes <= WFH_MORNING_END;
+  const anyMorning = morning || wfhMorning;
 
-  const tomorrow = data?.weather?.tomorrow;
-  const tomorrowIsWorkday = tomorrow ? [1, 2, 3, 4, 5].includes(dayIndex(tomorrow.date)) : false;
-  const showPreview = !morning && now.minutes >= PREVIEW_FROM && tomorrowIsWorkday;
-  const evening = showPreview; // 4 PM → 9 PM before a workday: bedtime countdown + set-up list
+  const showPreview = !anyMorning && now.minutes >= PREVIEW_FROM && modes.tomorrow !== "off";
+  const evening = showPreview; // 4 PM → bedtime before a workday: bedtime countdown + set-up list
+  const tomorrowAlarm = tomorrowWfh
+    ? data?.schedule.wfhAlarm ?? "05:45"
+    : data?.schedule.officeAlarm ?? "04:15";
   const forceIdeas = new URLSearchParams(window.location.search).has("ideas"); // preview: add ?ideas
   const forceRadar = new URLSearchParams(window.location.search).has("radar"); // preview: add ?radar
   const radarOn = forceRadar || rainAround(data, now, alerts);
@@ -238,6 +251,18 @@ export default function App() {
     setBusy(false);
   }
 
+  async function changeMode(day: "today" | "tomorrow", mode: "office" | "wfh" | "auto") {
+    if (!key || busy) return;
+    setBusy(true);
+    try {
+      await setDayMode(key, day, mode);
+    } catch (e) {
+      console.error(e);
+    }
+    await refresh();
+    setBusy(false);
+  }
+
   async function act(action: "took" | "undo" | "refilled") {
     if (!key || !data || busy) return;
     setBusy(true);
@@ -260,6 +285,7 @@ export default function App() {
   return (
     <div className={`mirror ${departedToday ? "is-departed" : ""}`}>
       {morning && data && !departedToday && <ProgressBar now={now} data={data} />}
+      {wfhMorning && data && <WfhProgressBar now={now} data={data} />}
 
       <main className="main">
         <section className="hero">
@@ -280,6 +306,21 @@ export default function App() {
             <Departed departure={depart.today} busy={busy} onUndo={undoGo} />
           )}
           {morning && <WeekLine week={depart.week} />}
+          {wfhMorning && data && <LogonCountdown now={now} logon={data.schedule.logon ?? "06:00"} />}
+          {wfhMorning && (
+            <Checklist
+              date={now.date}
+              items={WFH_MORNING_ITEMS}
+              storageKey="mirror-wfh"
+              title="Set up your desk"
+              doneTitle="Ready to log on"
+            />
+          )}
+          {data &&
+            !departedToday &&
+            ((modes.today === "wfh" && now.minutes < WFH_MORNING_END) || (morning && modes.todayChanged)) && (
+            <TodayModeSwitch mode={modes.today} changed={modes.todayChanged} busy={busy} onChange={changeMode} />
+          )}
           {morning && !departedToday && (
             <Checklist
               date={now.date}
@@ -289,18 +330,18 @@ export default function App() {
               doneTitle="Got everything"
             />
           )}
-          {evening && data && <BedtimeCountdown now={now} alarm={data.schedule.alarm} />}
+          {evening && data && <BedtimeCountdown now={now} alarm={tomorrowAlarm} bedtime={bedtime} />}
           {evening && <WeekLine week={depart.week} />}
           {evening && (
             <Checklist
               date={now.date}
-              items={EVENING_ITEMS}
+              items={tomorrowWfh ? EVENING_WFH_ITEMS : EVENING_ITEMS}
               storageKey="mirror-evening"
               title="Set up tomorrow"
               doneTitle="All set for tomorrow"
             />
           )}
-          {!morning && !evening && data?.weather?.hourly && (
+          {!anyMorning && !evening && data?.weather?.hourly && (
             <HourlyStrip
               now={now}
               hours={data.weather.hourly}
@@ -314,12 +355,21 @@ export default function App() {
         </section>
 
         <section className="side">
-          {data && <MedsCard data={data} now={now} morning={morning} busy={busy} onAction={act} />}
+          {data && <MedsCard data={data} now={now} morning={anyMorning} busy={busy} onAction={act} />}
           {morning && data && <CommuteCard data={data} />}
           {morning && <RadarCard />}
-          {!morning && data && showPreview && <TomorrowCard data={data} />}
-          {!morning && data && !showPreview && radarOn && <RadarCard />}
-          {!morning && data && !showPreview && !radarOn && (
+          {wfhMorning && radarOn && <RadarCard />}
+          {!anyMorning && data && showPreview && (
+            <TomorrowCard
+              data={data}
+              mode={modes.tomorrow}
+              changed={modes.tomorrowChanged}
+              busy={busy}
+              onChange={changeMode}
+            />
+          )}
+          {!anyMorning && data && !showPreview && radarOn && <RadarCard />}
+          {!anyMorning && data && !showPreview && !radarOn && (
             <PhotoCard photos={data.photos ?? []} skipped={data.photosSkipped ?? 0} />
           )}
           {data?.weather && <WeatherCard data={data} morning={morning} nowMin={now.minutes} />}
@@ -352,6 +402,92 @@ export default function App() {
 // ------------------------------------------------------------
 // Weekday morning pieces
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+// Office vs. work-from-home
+// ------------------------------------------------------------
+function defaultModeFor(date: string): DayMode {
+  const dow = dayIndex(date);
+  if (dow === 0 || dow === 6) return "off";
+  return dow === 5 ? "wfh" : "office"; // Fridays are WFH
+}
+
+/** Server's answer when it has one; otherwise the usual weekly pattern. */
+function resolveModes(data: MirrorData | null, today: string) {
+  if (data?.mode) return data.mode;
+  return {
+    today: defaultModeFor(today),
+    tomorrow: defaultModeFor(addDays(today, 1)),
+    todayChanged: false,
+    tomorrowChanged: false,
+  };
+}
+
+function TodayModeSwitch({
+  mode,
+  changed,
+  busy,
+  onChange,
+}: {
+  mode: DayMode;
+  changed: boolean;
+  busy: boolean;
+  onChange: (day: "today" | "tomorrow", mode: "office" | "wfh" | "auto") => void;
+}) {
+  return (
+    <div className="mode-switch">
+      <span>{mode === "wfh" ? "Working from home today" : "Going into the office today"}</span>
+      {changed ? (
+        <button type="button" className="link-btn" disabled={busy} onClick={() => onChange("today", "auto")}>
+          Undo change
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="link-btn"
+          disabled={busy}
+          onClick={() => onChange("today", mode === "wfh" ? "office" : "wfh")}
+        >
+          {mode === "wfh" ? "Going in instead?" : "Working from home instead?"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WfhProgressBar({ now, data }: { now: NyNow; data: MirrorData }) {
+  const start = toMin(data.schedule.alarm);
+  const end = toMin(data.schedule.logon ?? "06:00");
+  const exact = now.minutes + now.seconds / 60;
+  const total = Math.max(1, end - start);
+  const used = Math.min(total, Math.max(0, exact - start));
+  const over = exact > end;
+  return (
+    <div className="progress">
+      <div className="progress-labels">
+        <span>{fmt12(start)} Alarm</span>
+        <span className="progress-mid">{over ? "Logged on?" : `${Math.floor(used)} of ${total} min used`}</span>
+        <span>{fmt12(end)} Log on</span>
+      </div>
+      <div className="progress-track">
+        <div className={`progress-fill ${over ? "is-over" : ""}`} style={{ width: `${(used / total) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function LogonCountdown({ now, logon }: { now: NyNow; logon: string }) {
+  const exact = now.minutes + now.seconds / 60;
+  const left = Math.ceil(toMin(logon) - exact);
+  const state = left > 5 ? "calm" : left > 0 ? "warn" : "warn";
+  const text = left > 0 ? `Log on in ${left} min` : "Time to log on";
+  return (
+    <div className="countdown-col">
+      <div className={`pill pill-${state}`}>{text}</div>
+      <div className="hero-sub">Work from home · Log on at {fmt12(logon, true)}</div>
+    </div>
+  );
+}
+
 function ProgressBar({ now, data }: { now: NyNow; data: MirrorData }) {
   const start = toMin(data.schedule.alarm);
   const end = toMin(data.commute?.leaveBy ?? data.schedule.leaveIdeal);
@@ -379,6 +515,8 @@ function ProgressBar({ now, data }: { now: NyNow; data: MirrorData }) {
 
 // Edit these lists to change what shows up. Ticks reset every day.
 const MORNING_ITEMS = ["Keys", "Water bottle", "Badge", "Lunch"];
+const WFH_MORNING_ITEMS = ["Laptop set up at desk", "Keyboard & mouse connected"];
+const EVENING_WFH_ITEMS = ["Charge phone", "Charge watch", "Charge keyboard & mouse"];
 const EVENING_ITEMS = ["Pack lunch", "Lay out clothes", "Charge phone", "Charge watch", "Plug in car"];
 
 function loadTicks(storageKey: string, date: string): string[] {
@@ -452,10 +590,10 @@ function Checklist({
   );
 }
 
-function BedtimeCountdown({ now, alarm }: { now: NyNow; alarm: string }) {
+function BedtimeCountdown({ now, alarm, bedtime }: { now: NyNow; alarm: string; bedtime: number }) {
   const exact = now.minutes + now.seconds / 60;
-  const left = Math.ceil(BEDTIME - exact);
-  const sleepMin = 24 * 60 - BEDTIME + toMin(alarm);
+  const left = Math.ceil(bedtime - exact);
+  const sleepMin = 24 * 60 - bedtime + toMin(alarm);
   const sleepText = `${Math.floor(sleepMin / 60)} hr${sleepMin % 60 ? ` ${sleepMin % 60} min` : ""}`;
 
   const text =
@@ -471,7 +609,7 @@ function BedtimeCountdown({ now, alarm }: { now: NyNow; alarm: string }) {
       <div className={`pill pill-${state}`}>{text}</div>
       <div className="hero-sub">
         {left <= WIND_DOWN && left > 0 ? "Start winding down · " : ""}
-        Bedtime {fmt12(BEDTIME, true)} · {sleepText} until your {fmt12(alarm, true)} alarm
+        Bedtime {fmt12(bedtime, true)} · {sleepText} until your {fmt12(alarm, true)} alarm
       </div>
     </>
   );
@@ -724,32 +862,76 @@ function PhotoCard({ photos, skipped }: { photos: string[]; skipped: number }) {
   );
 }
 
-function TomorrowCard({ data }: { data: MirrorData }) {
-  const t = data.weather!.tomorrow!;
-  const drive = (h: typeof t.driveIn) =>
+function TomorrowCard({
+  data,
+  mode,
+  changed,
+  busy,
+  onChange,
+}: {
+  data: MirrorData;
+  mode: DayMode;
+  changed: boolean;
+  busy: boolean;
+  onChange: (day: "today" | "tomorrow", mode: "office" | "wfh" | "auto") => void;
+}) {
+  const t = data.weather?.tomorrow;
+  const date = t?.date ?? addDays(data.now.date, 1);
+  const wfh = mode === "wfh";
+  const describe = (h: { temp: number; rain: number } | null | undefined) =>
     h ? `${h.temp}° · ${h.rain >= 30 ? `Rain ${h.rain}%` : "Dry"}` : "—";
 
   return (
     <div className="card tomorrow">
-      <span className="card-label tomorrow-label">Tomorrow · {weekdayLong(t.date)}</span>
-      <span className="tomorrow-title">Leave by {fmt12(data.schedule.leaveIdeal)}</span>
+      <span className="card-label tomorrow-label">
+        Tomorrow · {weekdayLong(date)}
+        {wfh ? " · Work from home" : ""}
+      </span>
+      <span className="tomorrow-title">
+        {wfh ? `Log on at ${fmt12(data.schedule.logon ?? "06:00")}` : `Leave by ${fmt12(data.schedule.leaveIdeal)}`}
+      </span>
       <div className="weather-drives">
         <div className="drive-row">
           <span className="drive-label">Alarm</span>
-          <span>{fmt12(data.schedule.alarm, true)}</span>
+          <span>{fmt12(wfh ? data.schedule.wfhAlarm ?? "05:45" : data.schedule.officeAlarm ?? "04:15", true)}</span>
         </div>
-        <div className="drive-row">
-          <span className="drive-label">Drive in</span>
-          <span>{drive(t.driveIn)}</span>
-        </div>
-        <div className="drive-row">
-          <span className="drive-label">Drive home</span>
-          {t.driveHome && t.driveHome.rain >= 40 ? (
-            <span className="rain-text">Rain {t.driveHome.rain}% · bring umbrella</span>
-          ) : (
-            <span>{drive(t.driveHome)}</span>
-          )}
-        </div>
+        {wfh ? (
+          <div className="drive-row">
+            <span className="drive-label">Morning</span>
+            <span>{describe(t?.driveIn)}</span>
+          </div>
+        ) : (
+          <>
+            <div className="drive-row">
+              <span className="drive-label">Drive in</span>
+              <span>{describe(t?.driveIn)}</span>
+            </div>
+            <div className="drive-row">
+              <span className="drive-label">Drive home</span>
+              {t?.driveHome && t.driveHome.rain >= 40 ? (
+                <span className="rain-text">Rain {t.driveHome.rain}% · bring umbrella</span>
+              ) : (
+                <span>{describe(t?.driveHome)}</span>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      <div className="mode-switch">
+        {changed ? (
+          <button type="button" className="link-btn" disabled={busy} onClick={() => onChange("tomorrow", "auto")}>
+            Undo change ({wfh ? "back to the office" : "back to work from home"})
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="link-btn"
+            disabled={busy}
+            onClick={() => onChange("tomorrow", wfh ? "office" : "wfh")}
+          >
+            {wfh ? "Going into the office instead?" : "Working from home instead?"}
+          </button>
+        )}
       </div>
     </div>
   );

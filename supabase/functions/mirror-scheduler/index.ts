@@ -70,6 +70,50 @@ function prettyDate(date: string) {
   });
 }
 
+
+// ---------- office / work-from-home / day off ----------
+type DayMode = "office" | "wfh" | "off";
+
+function weekdayOf(date: string) {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sun
+}
+
+function defaultMode(s: Record<string, unknown>, date: string): DayMode {
+  const dow = weekdayOf(date);
+  if (dow === 0 || dow === 6) return "off";
+  const wfh = Array.isArray(s.wfh_weekdays) ? (s.wfh_weekdays as number[]) : [5];
+  return wfh.includes(dow) ? "wfh" : "office";
+}
+
+/** Today's and tomorrow's mode, including one-off changes. */
+async function dayModes(s: Record<string, unknown>, today: string) {
+  const tomorrow = addDays(today, 1);
+  const modes = { today: defaultMode(s, today), tomorrow: defaultMode(s, tomorrow), todayChanged: false, tomorrowChanged: false };
+  const { data, error } = await db
+    .from("mirror_day_mode")
+    .select("local_date, mode")
+    .in("local_date", [today, tomorrow]);
+  if (error) return modes; // table not set up yet → defaults
+  for (const row of data ?? []) {
+    if (row.local_date === today && modes.today !== "off") {
+      modes.todayChanged = row.mode !== modes.today;
+      modes.today = row.mode;
+    }
+    if (row.local_date === tomorrow && modes.tomorrow !== "off") {
+      modes.tomorrowChanged = row.mode !== modes.tomorrow;
+      modes.tomorrow = row.mode;
+    }
+  }
+  return modes;
+}
+
+function medsTimeFor(s: Record<string, string>, mode: DayMode) {
+  if (mode === "off") return s.meds_time_weekend;
+  if (mode === "wfh") return s.wfh_meds_time ?? "06:00";
+  return s.meds_time_weekday;
+}
+
 // ---------- nudge bookkeeping ----------
 async function claimNudge(localDate: string, kind: "meds" | "refill") {
   const { error } = await db.from("mirror_nudge_log").insert({ local_date: localDate, kind });
@@ -124,7 +168,8 @@ Deno.serve(async (req) => {
     const now = localNow(s.timezone);
 
     // ---- Meds nudge ----
-    const medsMin = toMin(now.isWeekday ? s.meds_time_weekday : s.meds_time_weekend);
+    const mode = await dayModes(s, now.date);
+    const medsMin = toMin(medsTimeFor(s, mode.today));
     const nudgeAt = medsMin + s.meds_nudge_delay_min;
 
     if (now.minutes >= nudgeAt && now.minutes < nudgeAt + MEDS_NUDGE_WINDOW_MIN) {
