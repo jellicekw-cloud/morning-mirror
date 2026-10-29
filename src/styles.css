@@ -702,3 +702,118 @@ body,
 .mirror.is-departed {
   opacity: 0.45;
 }
+
+/* ---------- live radar ---------- */
+.radar {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 24vmin;
+  border-radius: 2.2vmin;
+  overflow: hidden;
+  background: #0b0812;
+}
+.radar-map {
+  position: absolute;
+  inset: 0;
+  background: #0b0812;
+}
+.radar-map .leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.45);
+  color: #8f84a3;
+  font-size: 9px;
+}
+.radar-map .leaflet-control-attribution a {
+  color: #8f84a3;
+}
+.radar-label {
+  position: absolute;
+  top: 1.2vmin;
+  left: 1.4vmin;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 1.2vmin;
+  padding: 0.5vmin 1.4vmin;
+  border-radius: 999px;
+  background: rgba(18, 13, 28, 0.8);
+  font-size: 1.7vmin;
+  color: var(--muted);
+}
+.radar-title {
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.radar-now {
+  color: var(--green-title);
+}
+
+/* ---------- NWS alert crawl ---------- */
+.ticker {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  border-radius: 1.4vmin;
+  overflow: hidden;
+  font-size: 2.2vmin;
+  font-weight: 600;
+}
+.ticker-tag {
+  display: flex;
+  align-items: center;
+  padding: 0.9vmin 1.8vmin;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.ticker-track {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+.ticker-text {
+  display: inline-block;
+  white-space: nowrap;
+  padding-left: 100%;
+  animation: ticker-scroll linear infinite;
+}
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+.ticker-warning .ticker-tag {
+  background: #d93838;
+  color: #fff;
+}
+.ticker-warning .ticker-track {
+  background: #4a1414;
+  color: #ffd9d9;
+}
+.ticker-watch .ticker-tag {
+  background: #e8862a;
+  color: #241002;
+}
+.ticker-watch .ticker-track {
+  background: #4a2a0e;
+  color: #ffe2c4;
+}
+.ticker-advisory .ticker-tag {
+  background: var(--amber);
+  color: #2a1c05;
+}
+.ticker-advisory .ticker-track {
+  background: var(--amber-bg);
+  color: var(--amber-title);
+}
+.night {
+  flex-direction: column;
+  gap: 4vmin;
+}
+.night-alerts {
+  width: 90%;
+}

@@ -11,6 +11,8 @@ import {
 import { fmt12, nyNow, prettyDate, timeOfIso, toMin, type NyNow } from "./time";
 import { BellIcon, CarIcon, CheckIcon, WeatherIcon } from "./icons";
 import { pickIdeas } from "./saturday";
+import { RadarCard } from "./radar";
+import { AlertTicker, useWeatherAlerts, type WxAlert } from "./alerts";
 import {
   departureView,
   flushPending,
@@ -169,6 +171,11 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [goLog, setGoLog] = useState<LocalDeparture[]>(readLog);
   useDailyReload();
+  const realAlerts = useWeatherAlerts();
+  const testAlert = new URLSearchParams(window.location.search).has("alerttest"); // preview: add ?alerttest
+  const alerts: WxAlert[] = testAlert
+    ? [{ id: "test", event: "Flash Flood Warning", headline: "Test alert: this is what a warning looks like", severity: "Severe" }]
+    : realAlerts;
 
   // Send any Go taps that were saved while the server couldn't take them.
   useEffect(() => {
@@ -183,7 +190,7 @@ export default function App() {
   if (keyRejected && !data) return <Setup rejected />;
 
   const night = now.minutes >= NIGHT_START || now.minutes < NIGHT_END;
-  if (night) return <Night now={now} />;
+  if (night) return <Night now={now} alerts={alerts} />;
 
   const morning = now.isWeekday && now.minutes >= MORNING_START && now.minutes <= MORNING_END;
 
@@ -192,6 +199,8 @@ export default function App() {
   const showPreview = !morning && now.minutes >= PREVIEW_FROM && tomorrowIsWorkday;
   const evening = showPreview; // 4 PM → 9 PM before a workday: bedtime countdown + set-up list
   const forceIdeas = new URLSearchParams(window.location.search).has("ideas"); // preview: add ?ideas
+  const forceRadar = new URLSearchParams(window.location.search).has("radar"); // preview: add ?radar
+  const radarOn = forceRadar || rainAround(data, now, alerts);
   const showIdeas =
     !morning &&
     (forceIdeas || (dayIndex(now.date) === 6 && now.minutes >= IDEAS_START && now.minutes < IDEAS_END));
@@ -307,8 +316,12 @@ export default function App() {
         <section className="side">
           {data && <MedsCard data={data} now={now} morning={morning} busy={busy} onAction={act} />}
           {morning && data && <CommuteCard data={data} />}
+          {morning && radarOn && <RadarCard />}
           {!morning && data && showPreview && <TomorrowCard data={data} />}
-          {!morning && data && !showPreview && <PhotoCard photos={data.photos ?? []} skipped={data.photosSkipped ?? 0} />}
+          {!morning && data && !showPreview && radarOn && <RadarCard />}
+          {!morning && data && !showPreview && !radarOn && (
+            <PhotoCard photos={data.photos ?? []} skipped={data.photosSkipped ?? 0} />
+          )}
           {data?.weather && <WeatherCard data={data} morning={morning} nowMin={now.minutes} />}
           {!morning && data && <PaydayCard today={now.date} />}
           {!data && (
@@ -326,7 +339,8 @@ export default function App() {
         </section>
       </main>
 
-      {data?.weather && <WeekStrip data={data} />}
+      {data?.weather && !(morning && radarOn) && <WeekStrip data={data} />}
+      <AlertTicker alerts={alerts} />
 
       {offline && lastOk && (
         <div className="offline">Offline · last updated {timeOfIso(lastOk.toISOString())}</div>
@@ -927,10 +941,28 @@ function WeekStrip({ data }: { data: MirrorData }) {
   );
 }
 
-function Night({ now }: { now: NyNow }) {
+/** Rain now, rain likely in the next 3 hours, or a storm/flood alert. */
+function rainAround(data: MirrorData | null, now: NyNow, alerts: WxAlert[]) {
+  if (alerts.some((a) => /storm|tornado|flood|rain|hurricane|tropical/i.test(a.event))) return true;
+  const w = data?.weather;
+  if (!w) return false;
+  if (w.now.kind === "rain" || w.now.kind === "storm") return true;
+  const hh = String(Math.floor(now.minutes / 60)).padStart(2, "0");
+  const fromKey = `${now.date}T${hh}:00`;
+  const next = (w.hourly ?? []).filter((h) => h.time >= fromKey).slice(0, 4);
+  return next.some((h) => h.rain >= 40 || h.kind === "rain" || h.kind === "storm");
+}
+
+function Night({ now, alerts }: { now: NyNow; alerts: WxAlert[] }) {
   return (
     <div className="night">
-      {now.clock} {now.ampm}
+      <span>
+        {now.clock} {now.ampm}
+      </span>
+      {/* Overnight, only real warnings break through the dark screen. */}
+      <div className="night-alerts">
+        <AlertTicker alerts={alerts.filter((a) => /warning/i.test(a.event))} />
+      </div>
     </div>
   );
 }
