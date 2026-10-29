@@ -81,7 +81,7 @@ function nextPayday(today: string) {
         : daysUntil <= 6
           ? weekdayLong(date)
           : prettyDate(date);
-  const sub = daysUntil === 0 ? "It's payday" : `in ${daysUntil} days`;
+  const sub = daysUntil === 0 ? "It's payday" : daysUntil === 1 ? "in 1 day" : `in ${daysUntil} days`;
   return { label, sub };
 }
 
@@ -355,7 +355,7 @@ export default function App() {
         </section>
 
         <section className="side">
-          {data && <MedsCard data={data} now={now} morning={anyMorning} busy={busy} onAction={act} />}
+          {data && <MedsCard data={data} now={now} morning={anyMorning} commuting={morning} busy={busy} onAction={act} />}
           {morning && data && <CommuteCard data={data} />}
           {morning && <RadarCard />}
           {wfhMorning && radarOn && <RadarCard />}
@@ -955,12 +955,14 @@ function MedsCard({
   data,
   now,
   morning,
+  commuting,
   busy,
   onAction,
 }: {
   data: MirrorData;
   now: NyNow;
   morning: boolean;
+  commuting: boolean;
   busy: boolean;
   onAction: (a: "took" | "undo" | "refilled") => void;
 }) {
@@ -1007,7 +1009,7 @@ function MedsCard({
   const minsUntil = medsMin - now.minutes;
   const sub =
     minsUntil > 0
-      ? `In ${minsUntil} min${morning ? ", before you head out" : ""}`
+      ? `In ${minsUntil} min${commuting ? ", before you head out" : ""}`
       : minsUntil === 0
         ? "Now"
         : minsUntil >= -60
