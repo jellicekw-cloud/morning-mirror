@@ -1125,12 +1125,13 @@ function WeekStrip({ data }: { data: MirrorData }) {
   );
 }
 
-/** Rain now, rain likely in the next 3 hours, or a storm/flood alert. */
+/** Rain in today's forecast (40%+), rain now or in the next few hours, or a storm/flood alert. */
 function rainAround(data: MirrorData | null, now: NyNow, alerts: WxAlert[]) {
   if (alerts.some((a) => /storm|tornado|flood|rain|hurricane|tropical/i.test(a.event))) return true;
   const w = data?.weather;
   if (!w) return false;
   if (w.now.kind === "rain" || w.now.kind === "storm") return true;
+  if ((w.days[0]?.rain ?? 0) >= 40) return true;
   const hh = String(Math.floor(now.minutes / 60)).padStart(2, "0");
   const fromKey = `${now.date}T${hh}:00`;
   const next = (w.hourly ?? []).filter((h) => h.time >= fromKey).slice(0, 4);
