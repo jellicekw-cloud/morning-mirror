@@ -1,6 +1,6 @@
 // Live radar loop for metro Atlanta.
 // Radar: RainViewer free tier (past 2 hours, 10-minute frames, max native zoom 7).
-// Base map: CARTO dark tiles. No keys needed for either.
+// Base map: Esri dark gray canvas. No keys needed for either.
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -49,10 +49,17 @@ export function RadarCard() {
       keyboard: false,
     });
     m.attributionControl.setPrefix(false);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      subdomains: "abcd",
-      maxZoom: 10,
-      attribution: "© OpenStreetMap © CARTO · Radar: RainViewer",
+    // Esri dark gray canvas: no API key needed (CARTO started requiring one in Sept 2026).
+    const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas";
+    L.tileLayer(`${esri}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, {
+      maxZoom: 16,
+      zIndex: 1,
+      attribution: "Tiles © Esri · Radar: RainViewer",
+    }).addTo(m);
+    // City and road labels on top of the radar.
+    L.tileLayer(`${esri}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, {
+      maxZoom: 16,
+      zIndex: 20,
     }).addTo(m);
     L.circleMarker(CENTER, { radius: 4, color: "#b794f6", fillColor: "#b794f6", fillOpacity: 1, weight: 2 }).addTo(m);
     map.current = m;
