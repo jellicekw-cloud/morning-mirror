@@ -374,6 +374,7 @@ export default function App() {
           )}
           {data?.weather && <WeatherCard data={data} morning={morning} nowMin={now.minutes} />}
           {!morning && data && <PaydayCard today={now.date} />}
+          {!anyMorning && <SeasonCard today={now.date} />}
           {!data && (
             <div className="card muted">
               {offline ? (
@@ -933,6 +934,28 @@ function TomorrowCard({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// Seasonal pattern from NOAA's Climate Prediction Center (updated monthly).
+// Oct 8, 2026: El Niño Advisory, strong-to-very-strong El Niño likely through Jan–Mar 2027.
+// The card hides itself after SEASON.until; update this when NOAA's status changes.
+const SEASON = {
+  title: "Strong El Niño",
+  note: "Georgia winters during El Niño tend to run wetter and cooler, with more storms.",
+  until: "2027-03-31",
+};
+
+function SeasonCard({ today }: { today: string }) {
+  if (today > SEASON.until) return null;
+  return (
+    <div className="card season">
+      <div className="season-top">
+        <span className="card-label">Season outlook</span>
+        <span className="season-title">{SEASON.title}</span>
+      </div>
+      <span className="card-sub muted-text">{SEASON.note}</span>
     </div>
   );
 }

@@ -832,3 +832,19 @@ body,
   font-size: 1.8vmin;
   color: #c9b3f7;
 }
+
+/* ---------- season outlook ---------- */
+.season {
+  padding: 1.4vmin 2.6vmin;
+  gap: 0.4vmin;
+}
+.season-top {
+  display: flex;
+  align-items: baseline;
+  gap: 1.4vmin;
+}
+.season-title {
+  font-size: 2.2vmin;
+  font-weight: 600;
+  color: var(--rain);
+}
