@@ -41,7 +41,17 @@ export interface DepartureStats {
 
 export type DayMode = "office" | "wfh" | "off";
 
+export interface NextTrip {
+  name: string;
+  destination: string | null;
+  startDate: string;
+  endDate: string | null;
+  status: "booked" | "planning";
+  nextFlight: null | { date: string; time: string | null; number: string | null; from: string | null; to: string | null };
+}
+
 export interface MirrorData {
+  nextTrip?: NextTrip | null;
   mode?: { today: DayMode; tomorrow: DayMode; todayChanged: boolean; tomorrowChanged: boolean };
   now: { date: string; weekday: string; minutes: number };
   photos?: string[];

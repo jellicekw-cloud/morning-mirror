@@ -9,6 +9,7 @@ import {
   type HourSlot,
   type Kind,
   type MirrorData,
+  type NextTrip,
 } from "./api";
 import { fmt12, nyNow, prettyDate, timeOfIso, toMin, type NyNow } from "./time";
 import { BellIcon, CarIcon, CheckIcon, WeatherIcon } from "./icons";
@@ -373,7 +374,12 @@ export default function App() {
             <PhotoCard photos={data.photos ?? []} skipped={data.photosSkipped ?? 0} />
           )}
           {data?.weather && <WeatherCard data={data} morning={morning} nowMin={now.minutes} />}
-          {!morning && data && <PaydayCard today={now.date} />}
+          {!anyMorning && data && (
+            <div className={data.nextTrip ? "pair-row" : ""}>
+              <PaydayCard today={now.date} />
+              {data.nextTrip && <TripCard trip={data.nextTrip} today={now.date} />}
+            </div>
+          )}
           {!anyMorning && <SeasonCard today={now.date} />}
           {!data && (
             <div className="card muted">
@@ -956,6 +962,47 @@ function SeasonCard({ today }: { today: string }) {
         <span className="season-title">{SEASON.title}</span>
       </div>
       <span className="card-sub muted-text">{SEASON.note}</span>
+    </div>
+  );
+}
+
+function TripCard({ trip, today }: { trip: NextTrip; today: string }) {
+  const until = daysBetween(today, trip.startDate);
+  const place = trip.destination || trip.name;
+  const f = trip.nextFlight;
+
+  let headline: string;
+  let sub: string;
+  if (until > 1) {
+    headline = place;
+    sub = `in ${until} days · ${prettyDate(trip.startDate)}`;
+  } else if (until === 1) {
+    headline = `${place} tomorrow!`;
+    sub = f?.date === addDays(today, 1) && f.time ? `Flight at ${fmt12(f.time, true)}` : prettyDate(trip.startDate);
+  } else if (until === 0) {
+    headline = `${place} today!`;
+    sub = f?.date === today && f.time ? `Flight at ${fmt12(f.time, true)}` : "Have a great trip";
+  } else {
+    const day = -until + 1;
+    const total = trip.endDate ? daysBetween(trip.startDate, trip.endDate) + 1 : null;
+    headline = place;
+    sub = total ? `On your trip · day ${day} of ${total}` : "On your trip";
+  }
+
+  const flightLine =
+    f && until <= 1 && (f.number || (f.from && f.to))
+      ? [f.number, f.from && f.to ? `${f.from} → ${f.to}` : null].filter(Boolean).join(" · ")
+      : null;
+
+  return (
+    <div className="card trip countdown">
+      <span className="card-label trip-label">
+        {until < 0 ? "Away" : "Next trip"}
+        {trip.status === "planning" ? " · planning" : ""}
+      </span>
+      <span className="countdown-title">{headline}</span>
+      <span className="card-sub trip-sub">{sub}</span>
+      {flightLine && <span className="card-sub trip-sub">{flightLine}</span>}
     </div>
   );
 }

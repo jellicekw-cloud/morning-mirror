@@ -333,6 +333,53 @@ async function getPhotos(): Promise<PhotoResult | null> {
 type Commute = NonNullable<Awaited<ReturnType<typeof getCommute>>>;
 type Weather = NonNullable<Awaited<ReturnType<typeof getWeather>>>;
 
+// ---------- next trip, from Runway's trips table (same Supabase project) ----------
+// Only the trip name, place, dates and first flight leave Runway. No budget or notes.
+async function getNextTrip(today: string) {
+  const { data, error } = await db
+    .from("trips")
+    .select("id, name, destination, start_date, end_date, status")
+    .in("status", ["booked", "planning"])
+    .not("start_date", "is", null)
+    .or(`end_date.gte.${today},and(end_date.is.null,start_date.gte.${today})`)
+    .order("start_date", { ascending: true })
+    .limit(1);
+  if (error) {
+    console.warn("trips:", error.message);
+    return null;
+  }
+  const trip = data?.[0];
+  if (!trip) return null;
+
+  const { data: flights } = await db
+    .from("trip_items")
+    .select("item_date, item_time, airline, flight_number, origin, destination")
+    .eq("trip_id", trip.id)
+    .eq("kind", "flight")
+    .gte("item_date", today)
+    .order("item_date", { ascending: true })
+    .order("item_time", { ascending: true, nullsFirst: false })
+    .limit(1);
+
+  const f = flights?.[0] ?? null;
+  return {
+    name: trip.name as string,
+    destination: (trip.destination as string | null) ?? null,
+    startDate: trip.start_date as string,
+    endDate: (trip.end_date as string | null) ?? null,
+    status: trip.status as "booked" | "planning",
+    nextFlight: f
+      ? {
+          date: f.item_date as string,
+          time: f.item_time ? String(f.item_time).slice(0, 5) : null,
+          number: [f.airline, f.flight_number].filter(Boolean).join(" ") || null,
+          from: f.origin ?? null,
+          to: f.destination ?? null,
+        }
+      : null,
+  };
+}
+
 // ---------- Go button: today + this week ----------
 async function getDepartures(today: string) {
   // Monday of this week
@@ -496,12 +543,14 @@ Deno.serve(async (req) => {
     const photoResult = await cached<PhotoResult>("photos-v2", PHOTOS_TTL_MIN, getPhotos);
     const photos = photoResult?.urls ?? [];
     const departures = await getDepartures(now.date);
+    const nextTrip = await getNextTrip(now.date);
 
     return json({
       now: { date: now.date, weekday: now.weekday, minutes: now.minutes },
       photos,
       photosSkipped: photoResult?.skipped ?? 0,
       departures,
+      nextTrip,
       isWorkday,
       mode,
       schedule: {

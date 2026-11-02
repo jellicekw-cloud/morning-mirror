@@ -848,3 +848,17 @@ body,
   font-weight: 600;
   color: var(--rain);
 }
+
+/* ---------- payday + trip side by side ---------- */
+.pair-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.8vmin;
+}
+.trip {
+  background: #2a1d45;
+}
+.trip-label,
+.trip-sub {
+  color: #c9b3f7;
+}
