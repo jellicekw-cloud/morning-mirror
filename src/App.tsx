@@ -358,7 +358,7 @@ export default function App() {
         <section className="side">
           {data && <MedsCard data={data} now={now} morning={anyMorning} commuting={morning} busy={busy} onAction={act} />}
           {morning && data && <CommuteCard data={data} />}
-          {morning && <RadarCard />}
+          {morning && radarOn && <RadarCard />}
           {wfhMorning && radarOn && <RadarCard />}
           {!anyMorning && data && showPreview && (
             <TomorrowCard
@@ -396,7 +396,7 @@ export default function App() {
         </section>
       </main>
 
-      {data?.weather && !morning && <WeekStrip data={data} />}
+      {data?.weather && !(morning && radarOn) && <WeekStrip data={data} />}
       <AlertTicker alerts={alerts} />
 
       {offline && lastOk && (
