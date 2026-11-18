@@ -15,6 +15,7 @@ import { fmt12, nyNow, prettyDate, timeOfIso, toMin, type NyNow } from "./time";
 import { BellIcon, CarIcon, CheckIcon, WeatherIcon } from "./icons";
 import { pickIdeas } from "./saturday";
 import { RadarCard } from "./radar";
+import { loadPhoto, photoId, pruneCache, type CachedPhoto } from "./photoCache";
 import { AlertTicker, useWeatherAlerts, type WxAlert } from "./alerts";
 import {
   departureView,
@@ -783,17 +784,13 @@ function IdeasCard({ date, rainChance }: { date: string; rainChance: number }) {
 // they fill the card; landscape photos fill it on their own.
 type Slide = string[]; // one or two photo URLs
 
-function photoId(url: string) {
-  // Signed links change every few minutes; the file path part stays the same.
-  return url.split("?")[0];
-}
 
-function buildSlides(photos: string[], ratios: Record<string, number>): Slide[] {
+function buildSlides(ids: string[], ratio: (id: string) => number): Slide[] {
   const slides: Slide[] = [];
-  const isPortrait = (u: string) => (ratios[photoId(u)] ?? 1.5) < 0.95;
-  for (let n = 0; n < photos.length; n++) {
-    const a = photos[n];
-    const b = photos[n + 1];
+  const isPortrait = (id: string) => ratio(id) < 0.95;
+  for (let n = 0; n < ids.length; n++) {
+    const a = ids[n];
+    const b = ids[n + 1];
     if (isPortrait(a) && b && isPortrait(b)) {
       slides.push([a, b]);
       n++;
@@ -805,32 +802,38 @@ function buildSlides(photos: string[], ratios: Record<string, number>): Slide[] 
 }
 
 function PhotoCard({ photos, skipped }: { photos: string[]; skipped: number }) {
-  // Width ÷ height of each photo, learned as they load.
-  const [ratios, setRatios] = useState<Record<string, number>>({});
+  // Photos kept on the tablet: file path → { object URL, width ÷ height }.
+  const [loaded, setLoaded] = useState<Record<string, CachedPhoto>>({});
+  const ids = photos.map(photoId);
+  const idsKey = ids.join("|");
 
   useEffect(() => {
     let cancelled = false;
-    for (const url of photos) {
-      const id = photoId(url);
-      if (ratios[id] != null) continue;
-      const img = new Image();
-      img.onload = () => {
-        if (!cancelled && img.naturalHeight) {
-          setRatios((r) => ({ ...r, [id]: img.naturalWidth / img.naturalHeight }));
-        }
-      };
-      img.src = url;
-    }
+    (async () => {
+      for (const url of photos) {
+        const id = photoId(url);
+        if (cancelled) return;
+        if (loaded[id]) continue;
+        const p = await loadPhoto(url); // one at a time, cache first
+        if (p && !cancelled) setLoaded((m) => ({ ...m, [id]: p }));
+      }
+      if (!cancelled && ids.length) pruneCache(ids);
+    })();
     return () => {
       cancelled = true;
     };
+    // Only when the set of FILES changes, not when the signed links refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photos]);
+  }, [idsKey]);
 
-  if (!photos.length) {
+  const ready = ids.filter((id) => loaded[id]);
+
+  if (!photos.length || !ready.length) {
     return (
       <div className="photo photo-empty">
-        {skipped > 0 ? (
+        {photos.length ? (
+          <span className="muted-text">Loading photos…</span>
+        ) : skipped > 0 ? (
           <>
             <span className="photo-empty-title">
               Found {skipped} photo{skipped === 1 ? "" : "s"} the screen can't show
@@ -847,20 +850,20 @@ function PhotoCard({ photos, skipped }: { photos: string[]; skipped: number }) {
     );
   }
 
-  const slides = buildSlides(photos, ratios);
+  const slides = buildSlides(ready, (id) => loaded[id]?.ratio ?? 1.5);
   // Rotation follows the clock, so it keeps going even if the card redraws.
   const index = Math.floor(Date.now() / (PHOTO_SECONDS * 1000)) % slides.length;
   const slide = slides[index];
 
   return (
-    <div className={`photo ${slide.length === 2 ? "photo-pair" : ""}`} key={slide.map(photoId).join("|")}>
-      {slide.length === 1 && <img src={slide[0]} alt="" className="photo-fill" aria-hidden="true" />}
-      {slide.map((src) => {
-        const r = ratios[photoId(src)] ?? 1.5;
-        const fit = slide.length === 2 || r >= 0.95 ? "photo-cover" : "photo-contain";
-        return <img key={photoId(src)} src={src} alt="" className={`photo-img ${fit}`} />;
+    <div className={`photo ${slide.length === 2 ? "photo-pair" : ""}`} key={slide.join("|")}>
+      {slide.length === 1 && <img src={loaded[slide[0]].src} alt="" className="photo-fill" aria-hidden="true" />}
+      {slide.map((id) => {
+        const p = loaded[id];
+        const fit = slide.length === 2 || p.ratio >= 0.95 ? "photo-cover" : "photo-contain";
+        return <img key={id} src={p.src} alt="" className={`photo-img ${fit}`} />;
       })}
-      {photos.length > 1 && (
+      {ready.length > 1 && (
         <span className="photo-count">
           {index + 1} / {slides.length}
         </span>
